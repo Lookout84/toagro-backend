@@ -1,0 +1,165 @@
+// schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  SELLER
+  BUYER
+}
+
+enum ListingStatus {
+  DRAFT
+  ACTIVE
+  SOLD
+  ARCHIVED
+}
+
+enum Condition {
+  NEW
+  USED
+}
+
+model User {
+  id            Int          @id @default(autoincrement())
+  email         String       @unique
+  password      String
+  role          Role         @default(BUYER)
+  phone         String?
+  address       String?
+  rating        Float?       @default(0.0)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  
+  // Відносини
+  listings      Listing[]
+  sentMessages  Message[]    @relation("SentMessages")
+  receivedMessages Message[] @relation("ReceivedMessages")
+  transactions  Transaction[]
+  reviews       Review[]
+  
+  @@index([email])
+  @@index([createdAt])
+}
+
+model Category {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  slug      String    @unique
+  parentId  Int?
+  parent    Category? @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children  Category[] @relation("CategoryHierarchy")
+  listings  Listing[]
+  
+  @@index([slug])
+}
+
+model Listing {
+  id          Int       @id @default(autoincrement())
+  title       String
+  description String
+  price       Float
+  year        Int?
+  condition   Condition?
+  location    String
+  status      ListingStatus @default(DRAFT)
+  photos      String[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  // Відносини
+  category    Category  @relation(fields: [categoryId], references: [id])
+  categoryId  Int
+  seller      User      @relation(fields: [sellerId], references: [id])
+  sellerId    Int
+  messages    Message[]
+  transactions Transaction[]
+  reviews     Review[]
+  // Додаємо поле для повнотекстового пошуку
+  searchVector String? @db.Text
+
+  // Додаємо геолокацію (широта, довгота)
+  latitude  Float?
+  longitude Float?
+  
+  // Додаткове поле для PostGIS (використовується SQL-ін'єкція)
+  location  String? @db.Geometry(Point, 4326)
+
+  @@index([location], type: Gist, map: "location_gist_idx")
+  @@index([searchVector], type: Gin, map: "search_vector_idx")
+  @@index([title])
+  @@index([price])
+  @@index([createdAt])
+  @@index([title, description], type: Gin, map: "search_vector_idx")
+  @@fulltext([title, description])
+}
+
+model Message {
+  id          Int      @id @default(autoincrement())
+  content     String
+  createdAt   DateTime @default(now())
+  
+  // Відносини
+  sender      User     @relation("SentMessages", fields: [senderId], references: [id])
+  senderId    Int
+  receiver    User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  receiverId  Int
+  listing     Listing? @relation(fields: [listingId], references: [id])
+  listingId   Int?
+  
+  @@index([createdAt])
+}
+
+model Transaction {
+  id          Int      @id @default(autoincrement())
+  amount      Float
+  status      String   @default("PENDING")
+  paymentId   String?
+  createdAt   DateTime @default(now())
+  
+  // Відносини
+  buyer       User     @relation(fields: [buyerId], references: [id])
+  buyerId     Int
+  seller      User     @relation(fields: [sellerId], references: [id])
+  sellerId    Int
+  listing     Listing  @relation(fields: [listingId], references: [id])
+  listingId   Int
+  
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Review {
+  id          Int      @id @default(autoincrement())
+  rating      Int      // 1-5 зірок
+  comment     String?
+  createdAt   DateTime @default(now())
+  
+  // Відносини
+  reviewer    User     @relation("ReviewAuthor", fields: [reviewerId], references: [id])
+  reviewerId  Int
+  user        User     @relation("UserReviews", fields: [userId], references: [id])
+  userId      Int
+  listing     Listing  @relation(fields: [listingId], references: [id])
+  listingId   Int
+  
+  @@index([rating])
+  @@index([createdAt])
+}
+
+model ViewAnalytics {
+  id        Int      @id @default(autoincrement())
+  listing   Listing  @relation(fields: [listingId], references: [id])
+  listingId Int
+  userId    Int?     // null для анонімних
+  ipAddress String
+  userAgent String?
+  createdAt DateTime @default(now())
+}

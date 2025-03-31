@@ -1,0 +1,67 @@
+{
+    "root": true,
+    "env": {
+      "node": true,
+      "es2021": true
+    },
+    "extends": [
+      "eslint:recommended",
+      "plugin:@typescript-eslint/recommended",
+      "plugin:@typescript-eslint/recommended-requiring-type-checking",
+      "plugin:jest/recommended",
+      "prettier"
+    ],
+    "parser": "@typescript-eslint/parser",
+    "parserOptions": {
+      "project": "./tsconfig.json",
+      "ecmaVersion": "latest",
+      "sourceType": "module"
+    },
+    "plugins": [
+      "@typescript-eslint",
+      "jest",
+      "prettier"
+    ],
+    "rules": {
+      // === Основні правила ===
+      "no-console": "warn",
+      "no-debugger": "error",
+      "no-unused-vars": "off", // Вимикаємо базове правило
+      
+      // === TypeScript правила ===
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }
+      ],
+      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/ban-ts-comment": "warn",
+      "@typescript-eslint/no-floating-promises": "error",
+      "@typescript-eslint/consistent-type-imports": "error",
+      
+      // === Правила для чистого коду ===
+      "prefer-const": "error",
+      "eqeqeq": ["error", "always"],
+      "curly": "error",
+      
+      // === Правила форматування (Prettier) ===
+      "prettier/prettier": "error"
+    },
+    "overrides": [
+      {
+        "files": ["**/*.test.ts", "**/*.spec.ts"],
+        "env": {
+          "jest/globals": true
+        },
+        "rules": {
+          "@typescript-eslint/no-unsafe-assignment": "off",
+          "@typescript-eslint/no-unsafe-member-access": "off",
+          "@typescript-eslint/no-non-null-assertion": "off"
+        }
+      }
+    ],
+    "settings": {
+      "import/resolver": {
+        "typescript": {}
+      }
+    }
+  }
