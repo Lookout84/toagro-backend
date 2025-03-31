@@ -53,3 +53,5 @@ tsconfig.tsbuildinfo
 
 # === Prisma ===
 /prisma/migrations/
+
+readme1.md
