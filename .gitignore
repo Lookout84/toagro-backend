@@ -1,57 +1,37 @@
-# === Залежності ===
+# Dependencies
 node_modules/
+.npm
 npm-debug.log
-yarn-error.log
 
-# === Файли оточення ===
+# Environment variables
 .env
 .env.local
-.env.production
+.env.development
 .env.test
+.env.production
 
-# === IDE та редактори ===
-.idea/
-.vscode/
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-
-# === Логи та тимчасові файли ===
-*.log
-logs/
-temp/
-tmp/
-
-# === Згенеровані файли ===
+# Build files
 dist/
 build/
-coverage/
-*.js.map
-*.d.ts
 
-# === Docker ===
-docker-compose.override.yml
-.dockerignore
+# Logs and diagnostics
+logs/
+*.log
+npm-debug.log*
 
-# === Системні файли ===
+# Cache
+.npm/
+.cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# System files
 .DS_Store
 Thumbs.db
 
-# === Git ===
-.git/
-.gitattributes
-.gitmodules
-
-# === Тести ===
-/test/reports/
-/__snapshots__/
-
-# === TypeScript ===
-tsconfig.tsbuildinfo
-
-# === Prisma ===
-/prisma/migrations/
-
-readme1.md
+# Uploads
+uploads/

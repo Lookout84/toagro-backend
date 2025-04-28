@@ -1,107 +1,90 @@
-import { PrismaClient } from '@prisma/client';
-import { createClient, type RedisClientType } from 'redis';
-import { logger } from '../utils/logger';
-import { env } from './env';
+// import { PrismaClient } from '@prisma/client';
+// import { logger } from '../utils/logger';
 
-// Singleton instance для Prisma Client
-const prismaClientSingleton = () => {
-  return new PrismaClient({
-    log: env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+// const prisma = new PrismaClient({
+//   log: [
+//     { emit: 'event', level: 'query' },
+//     { emit: 'event', level: 'error' },
+//     { emit: 'event', level: 'info' },
+//     { emit: 'event', level: 'warn' },
+//   ],
+// });
+
+// // Log queries in development mode
+// if (process.env.NODE_ENV === 'development') {
+//   prisma.$on('query', (e) => {
+//     logger.debug(`Query: ${e.query}`);
+//     logger.debug(`Duration: ${e.duration}ms`);
+//   });
+// }
+
+// prisma.$on('error', (e) => {
+//   logger.error(`Prisma Error: ${e.message}`);
+// });
+
+// export { prisma };
+
+import { PrismaClient, Prisma } from '@prisma/client';
+import { logger } from '../utils/logger';
+
+// Отримуємо типи для подій
+type QueryEvent = Prisma.QueryEvent;
+type LogEvent = Prisma.LogEvent;
+
+const prisma = new PrismaClient({
+  log: [
+    { emit: 'event', level: 'query' },
+    { emit: 'event', level: 'error' },
+    { emit: 'event', level: 'info' },
+    { emit: 'event', level: 'warn' },
+  ],
+});
+
+// Налаштування логування
+const setupPrismaLogging = () => {
+  prisma.$on('query', (e: QueryEvent) => {
+    logger.debug(`Prisma Query: ${e.query}`);
+    logger.debug(`Params: ${e.params}`);
+    logger.debug(`Duration: ${e.duration}ms`);
+  });
+
+  prisma.$on('error', (e: LogEvent) => {
+    logger.error(`Prisma Error: ${e.message}`);
+  });
+
+  prisma.$on('info', (e: LogEvent) => {
+    logger.info(`Prisma Info: ${e.message}`);
+  });
+
+  prisma.$on('warn', (e: LogEvent) => {
+    logger.warn(`Prisma Warning: ${e.message}`);
   });
 };
 
-declare global {
-  var prisma: undefined | ReturnType<typeof prismaClientSingleton>;
-}
-
-// Ініціалізація Redis клієнта
-let redisClient: RedisClientType;
-let isRedisConnected = false;
-
-// Конфігурація підключення Redis
-const redisConfig = {
-  url: env.REDIS_URL,
-  ...(env.REDIS_PASSWORD && { password: env.REDIS_PASSWORD }),
-  socket: {
-    reconnectStrategy: (retries: number) => {
-      if (retries > 5) {
-        logger.error('Redis connection retries exceeded');
-        return new Error('Max retries reached');
-      }
-      return Math.min(retries * 500, 2000);
-    },
-  },
-};
-
-export const prisma = globalThis.prisma ?? prismaClientSingleton();
-
-if (env.NODE_ENV !== 'production') globalThis.prisma = prisma;
-
-// Функція підключення до Redis
-export const connectRedis = async (): Promise<RedisClientType> => {
-  if (!redisClient) {
-    redisClient = createClient(redisConfig);
-
-    redisClient.on('connect', () => {
-      isRedisConnected = true;
-      logger.info('Redis connected successfully');
-    });
-
-    redisClient.on('error', (err) => {
-      logger.error('Redis connection error:', err);
-      isRedisConnected = false;
-    });
-
-    redisClient.on('reconnecting', () => {
-      logger.warn('Redis reconnecting...');
-      isRedisConnected = false;
-    });
-  }
-
-  if (!isRedisConnected) {
-    await redisClient.connect();
-  }
-  
-  return redisClient;
-};
-
-// Функція підключення до Prisma
-export const connectPrisma = async () => {
+// Ініціалізація з'єднання
+const initializePrisma = async () => {
   try {
     await prisma.$connect();
-    logger.info('Prisma connected to PostgreSQL');
+    logger.info('Prisma Client successfully connected to the database');
+    
+    if (process.env.NODE_ENV === 'development') {
+      setupPrismaLogging();
+    }
   } catch (error) {
-    logger.error('Prisma connection error:', error);
+    logger.error('Failed to connect to the database:', error);
     process.exit(1);
   }
 };
 
-// Health check для баз даних
-export const dbHealthCheck = async () => {
-  const results = await Promise.allSettled([
-    prisma.$queryRaw`SELECT 1`,
-    redisClient?.ping(),
-  ]);
-
-  return {
-    postgres: results[0].status === 'fulfilled' ? 'healthy' : 'unhealthy',
-    redis: results[1].status === 'fulfilled' ? 'healthy' : 'unhealthy',
-  };
-};
-
-// Типи для імпорту
-export type RedisClient = typeof redisClient;
-export type PrismaClient = typeof prisma;
-
-// Graceful shutdown
-process.on('SIGINT', async () => {
-  await prisma.$disconnect();
-  await redisClient?.quit();
-  process.exit(0);
+// Викликаємо ініціалізацію
+initializePrisma().catch((e) => {
+  logger.error('Prisma initialization error:', e);
 });
 
-process.on('SIGTERM', async () => {
+// Обробка завершення процесу
+process.on('beforeExit', async () => {
   await prisma.$disconnect();
-  await redisClient?.quit();
-  process.exit(0);
+  logger.info('Prisma Client disconnected');
 });
+
+export { prisma };

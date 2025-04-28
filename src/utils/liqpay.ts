@@ -1,160 +1,66 @@
-import { createHash, createHmac } from 'crypto';
-import { PrismaClient } from '@prisma/client';
+import crypto from 'crypto';
+import { config } from '../config/env';
 import { logger } from './logger';
-import { env } from '../config/env';
 
-const prisma = new PrismaClient();
-
-interface LiqPayParams {
-  amount: number;
-  currency?: 'UAH' | 'USD' | 'EUR';
-  orderId?: string;
-  description?: string;
-  resultUrl?: string;
-  serverUrl?: string;
-}
-
-interface LiqPayCallbackData {
-  data: string;
-  signature: string;
-}
-
-interface DecodedLiqPayData {
-  order_id: string;
-  payment_id: string;
-  status: 'success' | 'failure' | 'error' | 'subscribed' | 'unsubscribed' | 'reversed';
+interface LiqpayParams {
   amount: number;
   currency: string;
-  transaction_id: string;
+  description: string;
+  order_id: string;
+  result_url?: string;
+  server_url?: string;
 }
 
-export class LiqPayService {
+export class LiqpayService {
   private readonly publicKey: string;
   private readonly privateKey: string;
-  private readonly apiUrl = 'https://www.liqpay.ua/api/3/checkout';
 
   constructor() {
-    this.publicKey = env.LIQPAY_PUBLIC_KEY;
-    this.privateKey = env.LIQPAY_PRIVATE_KEY;
+    this.publicKey = config.liqpayPublicKey;
+    this.privateKey = config.liqpayPrivateKey;
   }
 
-  /**
-   * Генерує дані для платіжної форми
-   */
-  async createPaymentData(params: LiqPayParams) {
-    const orderId = params.orderId || this.generateOrderId();
-    const currency = params.currency || 'UAH';
-    
-    const data = {
-      public_key: this.publicKey,
-      version: '3',
-      action: 'pay',
-      amount: params.amount,
-      currency,
-      description: params.description || 'Оплата агротехніки',
-      order_id: orderId,
-      result_url: params.resultUrl || `${env.CLIENT_URL}/payment-success`,
-      server_url: params.serverUrl || `${env.API_URL}/api/payments/callback`,
-      language: 'uk'
-    };
-
-    const encodedData = this.base64Encode(JSON.stringify(data));
-    const signature = this.createSignature(encodedData);
-
-    await prisma.transaction.create({
-      data: {
+  createPaymentLink(params: LiqpayParams): string {
+    const jsonString = Buffer.from(
+      JSON.stringify({
+        public_key: this.publicKey,
+        version: '3',
+        action: 'pay',
         amount: params.amount,
-        status: 'PENDING',
-        paymentId: orderId,
-        buyer: { connect: { id: /* ID покупця */ } }, // Додайте логіку отримання ID
-        listing: { connect: { id: /* ID оголошення */ } } // Додайте логіку отримання ID
-      }
-    });
+        currency: params.currency,
+        description: params.description,
+        order_id: params.order_id,
+        result_url: params.result_url,
+        server_url: params.server_url,
+      })
+    ).toString('base64');
 
-    return {
-      data: encodedData,
-      signature,
-      url: this.apiUrl
-    };
+    const signature = this.generateSignature(jsonString);
+
+    return `https://www.liqpay.ua/api/3/checkout?data=${jsonString}&signature=${signature}`;
   }
 
-  /**
-   * Обробка зворотного виклику від LiqPay
-   */
-  async handleCallback({ data, signature }: LiqPayCallbackData) {
-    try {
-      const decodedData = this.decodeLiqPayData(data);
-      const isValid = this.verifySignature(data, signature);
-
-      if (!isValid) {
-        logger.error('Invalid LiqPay signature', { data });
-        throw new Error('Invalid signature');
-      }
-
-      const transaction = await prisma.transaction.update({
-        where: { paymentId: decodedData.order_id },
-        data: {
-          status: decodedData.status.toUpperCase(),
-          paymentId: decodedData.payment_id
-        }
-      });
-
-      // Додаткова логіка при успішній оплаті
-      if (decodedData.status === 'success') {
-        await this.handleSuccessfulPayment(decodedData, transaction);
-      }
-
-      return { success: true };
-    } catch (error) {
-      logger.error('LiqPay callback error:', error);
-      throw error;
-    }
-  }
-
-  private async handleSuccessfulPayment(data: DecodedLiqPayData, transaction: any) {
-    // Оновлення статусу оголошення
-    await prisma.listing.update({
-      where: { id: transaction.listingId },
-      data: { status: 'SOLD' }
-    });
-
-    // Відправка повідомлення продавцю
-    // ... додайте логіку сповіщення ...
-  }
-
-  private generateOrderId() {
-    return `ORDER-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-  }
-
-  private base64Encode(str: string) {
-    return Buffer.from(str).toString('base64');
-  }
-
-  private base64Decode(str: string) {
-    return Buffer.from(str, 'base64').toString('utf-8');
-  }
-
-  private createSignature(data: string) {
-    const sha1 = createHmac('sha1', this.privateKey)
-      .update(data)
+  generateSignature(data: string): string {
+    return crypto
+      .createHash('sha1')
+      .update(this.privateKey + data + this.privateKey)
       .digest('base64');
-    return sha1;
   }
 
-  private verifySignature(receivedData: string, receivedSignature: string) {
-    const computedSignature = this.createSignature(receivedData);
-    return computedSignature === receivedSignature;
+  validateCallback(data: string, signature: string): boolean {
+    const expectedSignature = this.generateSignature(data);
+    return expectedSignature === signature;
   }
 
-  private decodeLiqPayData(encodedData: string): DecodedLiqPayData {
+  decodeData(data: string): any {
     try {
-      return JSON.parse(this.base64Decode(encodedData));
+      const decodedData = Buffer.from(data, 'base64').toString('utf-8');
+      return JSON.parse(decodedData);
     } catch (error) {
-      logger.error('Error decoding LiqPay data', { encodedData });
-      throw new Error('Invalid LiqPay data');
+      logger.error(`LiqPay data decoding error: ${error}`);
+      return null;
     }
   }
 }
 
-// Ініціалізація сервісу
-export const liqPay = new LiqPayService();
+export const liqpay = new LiqpayService();

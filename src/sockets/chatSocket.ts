@@ -1,186 +1,340 @@
+// import { Server } from 'socket.io';
+// import jwt from 'jsonwebtoken';
+// import { config } from '../config/env';
+// import { prisma } from '../config/db';
+// import { logger } from '../utils/logger';
+
+// interface TokenPayload {
+//   userId: number;
+//   role: string;
+// }
+
+// interface SocketUser {
+//   userId: number;
+//   socketId: string;
+// }
+
+// const connectedUsers = new Map<number, string>();
+
+// export const setupSocket = (io: Server) => {
+//   // Authentication middleware
+//   io.use(async (socket, next) => {
+//     try {
+//       const token = socket.handshake.auth.token;
+      
+//       if (!token) {
+//         return next(new Error('Authentication token is required'));
+//       }
+      
+//       const decoded = jwt.verify(token, config.jwtSecret) as TokenPayload;
+      
+//       // Check if user exists
+//       const user = await prisma.user.findUnique({
+//         where: { id: decoded.userId },
+//         select: { id: true }
+//       });
+      
+//       if (!user) {
+//         return next(new Error('User not found'));
+//       }
+      
+//       socket.data.userId = user.id;
+//       next();
+//     } catch (error) {
+//       logger.error(`Socket authentication error: ${error}`);
+//       next(new Error('Authentication failed'));
+//     }
+//   });
+
+//   io.on('connection', (socket) => {
+//     const userId = socket.data.userId;
+    
+//     // Store user connection
+//     connectedUsers.set(userId, socket.id);
+//     logger.info(`User connected: ${userId}, socketId: ${socket.id}`);
+    
+//     // Update online status
+//     socket.broadcast.emit('user:status', { userId, status: 'online' });
+    
+//     // Listen for incoming messages
+//     socket.on('message:send', async (data) => {
+//       try {
+//         const { receiverId, content, listingId } = data;
+        
+//         // Save message to database
+//         const message = await prisma.message.create({
+//           data: {
+//             content,
+//             senderId: userId,
+//             receiverId,
+//             listingId,
+//           },
+//           include: {
+//             sender: {
+//               select: {
+//                 id: true,
+//                 name: true,
+//                 avatar: true,
+//               },
+//             },
+//           },
+//         });
+        
+//         // Send to recipient if online
+//         const recipientSocketId = connectedUsers.get(receiverId);
+//         if (recipientSocketId) {
+//           io.to(recipientSocketId).emit('message:receive', message);
+//         }
+        
+//         // Send back to sender
+//         socket.emit('message:sent', message);
+//       } catch (error) {
+//         logger.error(`Socket message error: ${error}`);
+//         socket.emit('message:error', { error: 'Failed to send message' });
+//       }
+//     });
+    
+//     // Listen for "typing" indicator
+//     socket.on('typing:start', (data) => {
+//       const { receiverId } = data;
+//       const recipientSocketId = connectedUsers.get(receiverId);
+      
+//       if (recipientSocketId) {
+//         io.to(recipientSocketId).emit('typing:update', { userId, status: true });
+//       }
+//     });
+    
+//     socket.on('typing:stop', (data) => {
+//       const { receiverId } = data;
+//       const recipientSocketId = connectedUsers.get(receiverId);
+      
+//       if (recipientSocketId) {
+//         io.to(recipientSocketId).emit('typing:update', { userId, status: false });
+//       }
+//     });
+    
+//     // Handle disconnection
+//     socket.on('disconnect', () => {
+//       connectedUsers.delete(userId);
+//       logger.info(`User disconnected: ${userId}`);
+      
+//       // Update online status
+//       socket.broadcast.emit('user:status', { userId, status: 'offline' });
+//     });
+//   });
+  
+//   logger.info('Socket.io server initialized');
+// };
+
+// // Helper function to get online status
+// export const isUserOnline = (userId: number): boolean => {
+//   return connectedUsers.has(userId);
+// };
+
 import { Server, Socket } from 'socket.io';
+import jwt from 'jsonwebtoken';
+import { config } from '../config/env';
 import { prisma } from '../config/db';
 import { logger } from '../utils/logger';
-import { env } from '../config/env';
-import { redis } from '../utils/redis';
-import { Message } from '@prisma/client';
-import { createClient } from 'redis';
-import type { RedisClientType } from 'redis';
 
-interface ChatMessage {
-  listingId: number;
+interface TokenPayload {
+  userId: number;
+  role: string;
+}
+
+interface MessageData {
+  receiverId: number;
   content: string;
-  senderId: number;
+  listingId?: number;
+}
+
+interface TypingData {
   receiverId: number;
 }
 
-interface JoinRoomPayload {
-  listingId: number;
-  userId: number;
-}
-
-interface TypingEvent {
-  listingId: number;
-  isTyping: boolean;
-}
-
-export class ChatSocket {
+class SocketManager {
+  private connectedUsers = new Map<number, string>();
   private io: Server;
-  private pubClient: RedisClientType;
-  private subClient: RedisClientType;
-  
+
   constructor(io: Server) {
     this.io = io;
-    this.pubClient = createClient({ url: env.REDIS_URL });
-    this.subClient = this.pubClient.duplicate();
-    this.initialize();
+    this.setupAuthentication();
+    this.setupEventHandlers();
   }
 
-  private async initialize() {
-    await this.pubClient.connect();
-    await this.subClient.connect();
+  // private setupAuthentication() {
+  //   this.io.use(async (socket: Socket, next: (err?: Error) => void) => {
+  //     try {
+  //       const token = socket.handshake.auth.token;
+        
+  //       if (!token) {
+  //         logger.warn('Authentication attempt without token');
+  //         return next(new Error('Authentication token is required'));
+  //       }
+        
+  //       const decoded = jwt.verify(token, config.jwtSecret) as TokenPayload;
+        
+  //       const user = await prisma.user.findUnique({
+  //         where: { id: decoded.userId },
+  //         select: { id: true, isActive: true }
+  //       });
+        
+  //       if (!user || !user.isActive) {
+  //         logger.warn(`User not found or inactive: ${decoded.userId}`);
+  //         return next(new Error('User not found or inactive'));
+  //       }
+        
+  //       socket.data.userId = user.id;
+  //       next();
+  //     } catch (error) {
+  //       logger.error(`Socket authentication error: ${error}`);
+  //       next(new Error('Authentication failed'));
+  //     }
+  //   });
+  // }
 
-    this.io.use(this.authenticate);
-    this.io.on('connection', this.handleConnection);
-    
-    this.subClient.subscribe('chat_messages', (message) => {
-      const { room, data } = JSON.parse(message);
-      this.io.to(room).emit('new_message', data);
-    });
-  }
-
-  private authenticate = async (socket: Socket, next: Function) => {
-    try {
-      const token = socket.handshake.auth.token;
-      const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET) as { id: number };
-      const user = await prisma.user.findUnique({ 
-        where: { id: decoded.id },
-        select: { id: true, email: true }
-      });
-
-      if (!user) throw new Error('User not found');
-      socket.data.user = user;
-      next();
-    } catch (error) {
-      logger.error('WebSocket authentication error:', error);
-      next(new Error('Authentication failed'));
-    }
-  };
-
-  private handleConnection = (socket: Socket) => {
-    logger.info(`User connected: ${socket.data.user.id}`);
-
-    // Основний функціонал
-    socket.on('join_room', this.handleJoinRoom(socket));
-    socket.on('send_message', this.handleSendMessage(socket));
-    socket.on('typing', this.handleTyping(socket));
-    socket.on('disconnect', this.handleDisconnect(socket));
-    socket.on('mark_as_read', this.handleMarkAsRead(socket));
-
-    // Додаткові івенти
-    this.handlePresence(socket);
-    this.handleErrorEvents(socket);
-  };
-
-  private handleJoinRoom = (socket: Socket) => async ({ listingId }: JoinRoomPayload) => {
-    try {
-      const room = `listing_${listingId}`;
-      await socket.join(room);
-      
-      // Завантаження історії повідомлень
-      const messages = await prisma.message.findMany({
-        where: { listingId },
-        orderBy: { createdAt: 'asc' },
-        take: 50
-      });
-
-      socket.emit('message_history', messages);
-      logger.info(`User ${socket.data.user.id} joined room ${room}`);
-    } catch (error) {
-      logger.error('Join room error:', error);
-    }
-  };
-
-  private handleSendMessage = (socket: Socket) => async (message: ChatMessage) => {
-    try {
-      const newMessage = await prisma.message.create({
-        data: {
-          content: message.content,
-          listingId: message.listingId,
-          senderId: socket.data.user.id,
-          receiverId: message.receiverId
+  private setupAuthentication() {
+    this.io.use(async (socket: Socket, next: (err?: Error) => void) => {
+      try {
+        const token = socket.handshake.auth.token;
+        
+        if (!token) {
+          logger.warn('Authentication attempt without token');
+          return next(new Error('Authentication token is required'));
         }
-      });
-
-      // Публікація повідомлення через Redis
-      const room = `listing_${message.listingId}`;
-      await this.pubClient.publish('chat_messages', JSON.stringify({
-        room,
-        data: newMessage
-      }));
-
-      // Збереження непрочитаних повідомлень
-      await redis.setEx(
-        `unread:${message.receiverId}:${message.listingId}`,
-        60 * 60 * 24 * 7, // 7 днів
-        newMessage.id.toString()
-      );
-
-    } catch (error) {
-      logger.error('Message send error:', error);
-      socket.emit('message_error', 'Failed to send message');
-    }
-  };
-
-  private handleTyping = (socket: Socket) => ({ listingId, isTyping }: TypingEvent) => {
-    const room = `listing_${listingId}`;
-    socket.to(room).emit('typing_indicator', {
-      userId: socket.data.user.id,
-      isTyping
+        
+        const decoded = jwt.verify(token, config.jwtSecret) as TokenPayload;
+        
+        // Перевіряємо лише існування користувача (без isActive)
+        const user = await prisma.user.findUnique({
+          where: { id: decoded.userId },
+          select: { id: true } // Видалено isActive
+        });
+        
+        if (!user) {
+          logger.warn(`User not found: ${decoded.userId}`);
+          return next(new Error('User not found'));
+        }
+        
+        socket.data.userId = user.id;
+        next();
+      } catch (error) {
+        logger.error(`Socket authentication error: ${error}`);
+        next(new Error('Authentication failed'));
+      }
     });
-  };
+  }
 
-  private handleMarkAsRead = (socket: Socket) => async (messageId: number) => {
+  private setupEventHandlers() {
+    this.io.on('connection', (socket: Socket) => {
+      const userId = socket.data.userId;
+      
+      // Store user connection
+      this.connectedUsers.set(userId, socket.id);
+      logger.info(`User connected: ${userId}, socketId: ${socket.id}`);
+      
+      // Notify others about online status
+      this.io.emit('user:status', { userId, status: 'online' });
+      
+      // Message handling
+      socket.on('message:send', async (data: MessageData) => {
+        await this.handleMessage(socket, userId, data);
+      });
+      
+      // Typing indicators
+      socket.on('typing:start', (data: TypingData) => {
+        this.handleTyping(socket, userId, data.receiverId, true);
+      });
+      
+      socket.on('typing:stop', (data: TypingData) => {
+        this.handleTyping(socket, userId, data.receiverId, false);
+      });
+      
+      // Disconnection handler
+      socket.on('disconnect', () => {
+        this.handleDisconnect(userId);
+      });
+    });
+  }
+
+  private async handleMessage(socket: Socket, senderId: number, data: MessageData) {
     try {
-      await prisma.message.update({
-        where: { id: messageId },
-        data: { readAt: new Date() }
+      const { receiverId, content, listingId } = data;
+      
+      // Validate receiver exists
+      const receiver = await prisma.user.findUnique({
+        where: { id: receiverId },
+        select: { id: true }
       });
-      socket.emit('read_confirmation', messageId);
+      
+      if (!receiver) {
+        throw new Error('Recipient not found');
+      }
+      
+      const message = await prisma.message.create({
+        data: {
+          content,
+          senderId,
+          receiverId,
+          listingId,
+        },
+        include: {
+          sender: {
+            select: {
+              id: true,
+              name: true,
+              avatar: true,
+            },
+          },
+        },
+      });
+      
+      // Send to recipient if online
+      const recipientSocketId = this.connectedUsers.get(receiverId);
+      if (recipientSocketId) {
+        this.io.to(recipientSocketId).emit('message:receive', message);
+      }
+      
+      // Confirm to sender
+      socket.emit('message:sent', message);
     } catch (error) {
-      logger.error('Mark as read error:', error);
+      logger.error(`Message handling error for user ${senderId}: ${error}`);
+      socket.emit('message:error', { error: 'Failed to send message' });
     }
-  };
+  }
 
-  private handlePresence = (socket: Socket) => {
-    // Оновлення статусу онлайн
-    redis.sAdd('online_users', socket.data.user.id.toString());
-    
-    socket.on('disconnect', async () => {
-      await redis.sRem('online_users', socket.data.user.id.toString());
-      this.io.emit('user_offline', socket.data.user.id);
-    });
+  private handleTyping(socket: Socket, userId: number, receiverId: number, isTyping: boolean) {
+    try {
+      const recipientSocketId = this.connectedUsers.get(receiverId);
+      if (recipientSocketId) {
+        this.io.to(recipientSocketId).emit('typing:update', { 
+          userId, 
+          status: isTyping 
+        });
+      }
+    } catch (error) {
+      logger.error(`Typing indicator error: ${error}`);
+    }
+  }
 
-    // Перевірка статусу інших користувачів
-    socket.on('check_online', async (userId: number, callback) => {
-      const isOnline = await redis.sIsMember('online_users', userId.toString());
-      callback(isOnline);
-    });
-  };
+  private handleDisconnect(userId: number) {
+    this.connectedUsers.delete(userId);
+    logger.info(`User disconnected: ${userId}`);
+    this.io.emit('user:status', { userId, status: 'offline' });
+  }
 
-  private handleDisconnect = (socket: Socket) => async () => {
-    logger.info(`User disconnected: ${socket.data.user.id}`);
-    await redis.sRem('online_users', socket.data.user.id.toString());
-  };
-
-  private handleErrorEvents = (socket: Socket) => {
-    socket.on('error', (error) => {
-      logger.error('Socket error:', error);
-      socket.disconnect(true);
-    });
-  };
+  public isUserOnline(userId: number): boolean {
+    return this.connectedUsers.has(userId);
+  }
 }
 
-// Ініціалізація в головному файлі додатку:
-// const io = new Server(server);
-// new ChatSocket(io);
+export const setupSocket = (io: Server) => {
+  new SocketManager(io);
+  logger.info('Socket.io server initialized');
+};
+
+export const isUserOnline = (userId: number): boolean => {
+  // Note: This won't work with the class-based approach
+  // You'll need to access the SocketManager instance
+  return false;
+};

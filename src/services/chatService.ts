@@ -1,170 +1,191 @@
-import { Message, Prisma } from '@prisma/client';
 import { prisma } from '../config/db';
-import { redis } from '../utils/redis';
 import { logger } from '../utils/logger';
 
-export type MessageWithRelations = Prisma.MessageGetPayload<{
-  include: {
-    sender: true;
-    receiver: true;
-    listing: true;
-  };
-}>;
-
-interface SendMessageParams {
+interface CreateMessageData {
+  content: string;
   senderId: number;
   receiverId: number;
-  listingId: number;
-  content: string;
+  listingId?: number;
 }
 
-interface MarkAsReadParams {
-  userId: number;
-  listingId: number;
-}
+export const chatService = {
+  async sendMessage(data: CreateMessageData) {
+    const { content, senderId, receiverId, listingId } = data;
 
-class ChatService {
-  async sendMessage(params: SendMessageParams): Promise<MessageWithRelations> {
-    try {
-      const message = await prisma.message.create({
-        data: {
-          content: params.content,
-          senderId: params.senderId,
-          receiverId: params.receiverId,
-          listingId: params.listingId,
-        },
-        include: {
-          sender: true,
-          receiver: true,
-          listing: true
-        }
+    // Check if users exist
+    const [sender, receiver] = await Promise.all([
+      prisma.user.findUnique({ where: { id: senderId } }),
+      prisma.user.findUnique({ where: { id: receiverId } }),
+    ]);
+
+    if (!sender || !receiver) {
+      throw new Error('Sender or receiver not found');
+    }
+
+    // Check if listing exists if provided
+    if (listingId) {
+      const listing = await prisma.listing.findUnique({
+        where: { id: listingId },
       });
 
-      // Перевірка онлайн-статусу отримувача
-      const isReceiverOnline = await redis.sIsMember(
-        'online_users', 
-        params.receiverId.toString()
-      );
-
-      if (!isReceiverOnline) {
-        await redis.setEx(
-          `unread:${params.receiverId}:${params.listingId}`,
-          604800, // 7 днів
-          message.id.toString()
-        );
+      if (!listing) {
+        throw new Error('Listing not found');
       }
-
-      return message;
-    } catch (error) {
-      logger.error('Failed to send message:', error);
-      throw new Error('Failed to send message');
     }
-  }
 
-  async getMessageHistory(
-    listingId: number, 
-    page: number = 1, 
-    limit: number = 50
-  ): Promise<MessageWithRelations[]> {
-    try {
-      return await prisma.message.findMany({
-        where: { listingId },
-        include: {
-          sender: true,
-          receiver: true,
-          listing: true
+    const message = await prisma.message.create({
+      data: {
+        content,
+        senderId,
+        receiverId,
+        listingId,
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            avatar: true,
+          },
         },
-        orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * limit,
-        take: limit,
-      });
-    } catch (error) {
-      logger.error('Failed to fetch message history:', error);
-      throw new Error('Failed to fetch message history');
-    }
-  }
-
-  async markMessagesAsRead(params: MarkAsReadParams): Promise<void> {
-    try {
-      await prisma.message.updateMany({
-        where: {
-          receiverId: params.userId,
-          listingId: params.listingId,
-          readAt: null
+        receiver: {
+          select: {
+            id: true,
+            name: true,
+            avatar: true,
+          },
         },
-        data: {
-          readAt: new Date()
-        }
-      });
+      },
+    });
 
-      await redis.del(`unread:${params.userId}:${params.listingId}`);
-    } catch (error) {
-      logger.error('Failed to mark messages as read:', error);
-      throw new Error('Failed to mark messages as read');
-    }
-  }
+    return { message };
+  },
 
-  async getUnreadCounts(userId: number): Promise<Record<number, number>> {
-    try {
-      const counts = await prisma.message.groupBy({
-        by: ['listingId'],
-        where: {
-          receiverId: userId,
-          readAt: null
-        },
-        _count: true
-      });
+  async getConversation(userId: number, otherUserId: number, page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
 
-      return counts.reduce((acc, curr) => ({
-        ...acc,
-        [curr.listingId]: curr._count
-      }), {});
-    } catch (error) {
-      logger.error('Failed to get unread counts:', error);
-      throw new Error('Failed to get unread counts');
-    }
-  }
-
-  async deleteMessage(messageId: number, userId: number): Promise<void> {
-    try {
-      const message = await prisma.message.findUnique({
-        where: { id: messageId }
-      });
-
-      if (!message) throw new Error('Message not found');
-      if (message.senderId !== userId) throw new Error('Unauthorized');
-
-      await prisma.message.delete({
-        where: { id: messageId }
-      });
-    } catch (error) {
-      logger.error('Failed to delete message:', error);
-      throw new Error('Failed to delete message');
-    }
-  }
-
-  async getConversations(userId: number): Promise<MessageWithRelations[]> {
-    try {
-      return await prisma.message.findMany({
+    const [messages, total] = await Promise.all([
+      prisma.message.findMany({
         where: {
           OR: [
-            { senderId: userId },
-            { receiverId: userId }
-          ]
-        },
-        include: {
-          sender: true,
-          receiver: true,
-          listing: true
+            { senderId: userId, receiverId: otherUserId },
+            { senderId: otherUserId, receiverId: userId },
+          ],
         },
         orderBy: { createdAt: 'desc' },
-        distinct: ['listingId']
-      });
-    } catch (error) {
-      logger.error('Failed to get conversations:', error);
-      throw new Error('Failed to get conversations');
-    }
-  }
-}
+        skip,
+        take: limit,
+        include: {
+          sender: {
+            select: {
+              id: true,
+              name: true,
+              avatar: true,
+            },
+          },
+          receiver: {
+            select: {
+              id: true,
+              name: true,
+              avatar: true,
+            },
+          },
+        },
+      }),
+      prisma.message.count({
+        where: {
+          OR: [
+            { senderId: userId, receiverId: otherUserId },
+            { senderId: otherUserId, receiverId: userId },
+          ],
+        },
+      }),
+    ]);
 
-export const chatService = new ChatService();
+    // Mark messages as read
+    const unreadMessages = messages.filter(
+      (message) => message.senderId === otherUserId && !message.readAt
+    );
+
+    if (unreadMessages.length > 0) {
+      await prisma.message.updateMany({
+        where: {
+          id: { in: unreadMessages.map((message) => message.id) },
+        },
+        data: {
+          readAt: new Date(),
+        },
+      });
+    }
+
+    return {
+      messages: messages.reverse(), // Return in chronological order
+      meta: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit),
+      },
+    };
+  },
+
+  async getUserConversations(userId: number) {
+    // Get all unique conversations for the user
+    const conversations = await prisma.$queryRaw`
+      SELECT 
+        DISTINCT ON (other_user_id) 
+        other_user_id,
+        u.name as other_user_name,
+        u.avatar as other_user_avatar,
+        m.content as last_message,
+        m.created_at as last_message_time,
+        (SELECT COUNT(*) FROM "Message" 
+         WHERE sender_id = other_user_id 
+         AND receiver_id = ${userId} 
+         AND read_at IS NULL) as unread_count
+      FROM (
+        SELECT 
+          CASE 
+            WHEN sender_id = ${userId} THEN receiver_id
+            ELSE sender_id
+          END as other_user_id,
+          id,
+          content,
+          created_at
+        FROM "Message"
+        WHERE sender_id = ${userId} OR receiver_id = ${userId}
+        ORDER BY created_at DESC
+      ) m
+      JOIN "User" u ON u.id = other_user_id
+      ORDER BY other_user_id, m.created_at DESC
+    `;
+
+    return { conversations };
+  },
+
+  async markMessagesAsRead(userId: number, conversationUserId: number) {
+    await prisma.message.updateMany({
+      where: {
+        senderId: conversationUserId,
+        receiverId: userId,
+        readAt: null,
+      },
+      data: {
+        readAt: new Date(),
+      },
+    });
+
+    return { message: 'Messages marked as read' };
+  },
+
+  async getUnreadMessagesCount(userId: number) {
+    const count = await prisma.message.count({
+      where: {
+        receiverId: userId,
+        readAt: null,
+      },
+    });
+
+    return { count };
+  },
+};

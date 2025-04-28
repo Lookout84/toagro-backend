@@ -1,40 +1,57 @@
-import swaggerJSDoc from 'swagger-jsdoc';
-import { Express } from 'express';
-import swaggerUi from 'swagger-ui-express';
+import swaggerAutogen from 'swagger-autogen';
+import { config } from './config/env';
 
-const options = {
-  definition: {
-    openapi: '3.0.0',
-    info: {
-      title: 'Agro Market API',
-      version: '1.0.0',
-      description: 'API для торгівлі сільськогосподарською технікою',
-    },
-    servers: [{ url: 'http://localhost:5000/api/v1' }],
-    components: {
-      securitySchemes: {
-        bearerAuth: {
-          type: 'http',
-          scheme: 'bearer',
-          bearerFormat: 'JWT',
-        },
-      },
-      schemas: {
-        User: {
-          type: 'object',
-          properties: {
-            email: { type: 'string', format: 'email' },
-            password: { type: 'string', minLength: 8 },
-          },
-        },
-      },
+const doc = {
+  info: {
+    title: 'ToAgro API',
+    description: 'API documentation for the ToAgro platform',
+    version: '1.0.0',
+  },
+  host: `${config.host}:${config.port}`,
+  basePath: '/api',
+  schemes: ['http', 'https'],
+  securityDefinitions: {
+    bearerAuth: {
+      type: 'apiKey',
+      in: 'header',
+      name: 'Authorization',
+      description: 'Enter your bearer token in the format "Bearer {token}"',
     },
   },
-  apis: ['./src/routes/*.ts', './src/schemas/*.ts'],
+  tags: [
+    {
+      name: 'Auth',
+      description: 'Authentication and user management endpoints',
+    },
+    {
+      name: 'Listings',
+      description: 'Agricultural listing management endpoints',
+    },
+    {
+      name: 'Chat',
+      description: 'Messaging and communication endpoints',
+    },
+    {
+      name: 'Transactions',
+      description: 'Payment and transaction endpoints',
+    },
+    {
+      name: 'Admin',
+      description: 'Admin management endpoints',
+    },
+  ],
 };
 
-const swaggerSpec = swaggerJSDoc(options);
+const outputFile = './src/swagger-output.json';
+const endpointsFiles = [
+  './src/routes/auth.ts',
+  './src/routes/listings.ts',
+  './src/routes/chat.ts',
+  './src/routes/transactions.ts',
+  './src/routes/admin.ts',
+  './src/routes/health.ts',
+];
 
-export const setupSwagger = (app: Express) => {
-  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-};
+swaggerAutogen()(outputFile, endpointsFiles, doc).then(() => {
+  console.log('Swagger documentation generated');
+});

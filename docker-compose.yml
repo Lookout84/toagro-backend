@@ -1,71 +1,42 @@
 version: '3.8'
 
-# Змінні оточення (можна перевизначити в .env)
-x-env: &env
-  POSTGRES_USER: user
-  POSTGRES_PASSWORD: password
-  POSTGRES_DB: agro_market
-  REDIS_URL: redis://redis:6379
-  DATABASE_URL: postgresql://user:password@postgres:5432/agro_market?schema=public
-  JWT_ACCESS_SECRET: your_jwt_access_secret
-  JWT_REFRESH_SECRET: your_jwt_refresh_secret
-  NODE_ENV: development
-
 services:
-  postgres:
-    image: postgres:14
-    container_name: agro_postgres
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    networks:
-      - agro-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:7
-    container_name: agro_redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
-    networks:
-      - agro-network
-    command: redis-server --requirepass ${REDIS_PASSWORD:-""}
-
-  backend:
+  app:
     build: .
-    container_name: agro_backend
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_started
     ports:
-      - "5000:5000"
+      - "3000:3000"
+    depends_on:
+      - postgres
+      - redis
     environment:
-      <<: *env
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-""}
+      - NODE_ENV=development
+      - PORT=3000
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/toagro?schema=public
+      - REDIS_URL=redis://redis:6379
     volumes:
       - ./:/app
       - /app/node_modules
-    networks:
-      - agro-network
+      - ./uploads:/app/uploads
     command: npm run dev
 
-volumes:
-  postgres-data:
-  redis-data:
+  postgres:
+    image: postgres:14-alpine
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=toagro
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
 
-networks:
-  agro-network:
-    driver: bridge
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:

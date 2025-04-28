@@ -1,55 +1,20 @@
-# === Базовий образ для розробки ===
-FROM node:18-alpine AS development
+FROM node:18-alpine
 
-# Встановлюємо залежності для збірки нативних модулів (якщо потрібно)
-RUN apk add --no-cache python3 g++ make
-
-# Встановлюємо глобально Prisma та nodemon
-RUN npm install -g prisma nodemon
-
-# Робоча директорія
 WORKDIR /app
 
-# Копіюємо конфігурацію залежностей
+# Install dependencies
 COPY package*.json ./
-COPY prisma ./prisma/
+RUN npm install
 
-# Встановлюємо залежності
-RUN npm ci
-
-# Генеруємо Prisma Client
-RUN npx prisma generate
-
-# Копіюємо весь код
+# Copy project files
 COPY . .
 
-# Команда для запуску в режимі розробки
-CMD ["npm", "run", "dev"]
-
-# === Продакшен образ ===
-FROM node:18-alpine AS production
-
-# Оточення
-ARG NODE_ENV=production
-ENV NODE_ENV=${NODE_ENV}
-
-WORKDIR /app
-
-# Копіюємо конфігурацію залежностей
-COPY package*.json ./
-COPY prisma ./prisma/
-
-# Встановлюємо ТІЛЬКИ production залежності
-RUN npm ci --only=production
-
-# Генеруємо Prisma Client
+# Generate Prisma client
 RUN npx prisma generate
 
-# Копіюємо збірку з попереднього етапу
-COPY --from=development /app/dist ./dist
+# Build TypeScript
+RUN npm run build
 
-# Порт
-EXPOSE 5000
+EXPOSE 3000
 
-# Команда для запуску
-CMD ["node", "dist/app.js"]
+CMD ["npm", "start"]

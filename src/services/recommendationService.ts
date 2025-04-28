@@ -1,122 +1,93 @@
-import { Prisma } from '@prisma/client';
 import { prisma } from '../config/db';
-import { redis } from '../utils/redis';
-import { logger } from '../utils/logger';
-import { ListingResponse } from '../schemas/listingSchema';
+import { setCache, getCache } from '../utils/redis';
 
-export class RecommendationService {
-  private readonly CACHE_TTL = 60 * 60 * 2; // 2 години кешування
-
-  // Основний метод отримання рекомендацій
-  async getRecommendations(userId: number, limit = 10): Promise<ListingResponse[]> {
+export const recommendationService = {
+  async getRecommendedListings(userId: number, limit = 5) {
+    // Try to get from cache
     const cacheKey = `recommendations:${userId}`;
+    const cachedRecommendations = await getCache<any>(cacheKey);
     
-    try {
-      // Спроба отримати кешовані рекомендації
-      const cached = await redis.get(cacheKey);
-      if (cached) return JSON.parse(cached);
-
-      // Отримання історії переглядів
-      const viewedListings = await this.getUserViewHistory(userId);
-      
-      // Якщо немає історії - повертаємо популярні
-      if (viewedListings.length === 0) {
-        return this.getPopularListings(limit);
-      }
-
-      // Генерація рекомендацій
-      const recommendations = await this.generateRecommendations(userId, viewedListings, limit);
-      
-      // Збереження в кеш
-      await redis.setEx(cacheKey, this.CACHE_TTL, JSON.stringify(recommendations));
-      
-      return recommendations;
-    } catch (error) {
-      logger.error('Recommendation error:', error);
-      return this.getPopularListings(limit); // Fallback
-    }
-  }
-
-  // Отримання історії переглядів користувача
-  private async getUserViewHistory(userId: number) {
-    return prisma.viewAnalytics.findMany({
-      where: { userId },
-      select: { listingId: true },
-      take: 100, // Обмеження для продуктивності
-      orderBy: { createdAt: 'desc' }
-    });
-  }
-
-  // Генерація рекомендацій на основі історії
-  private async generateRecommendations(
-    userId: number,
-    viewedListings: { listingId: number }[],
-    limit: number
-  ): Promise<ListingResponse[]> {
-    const viewedIds = viewedListings.map(v => v.listingId);
-    
-    // Отримання категорій з історії
-    const categories = await prisma.listing.findMany({
-      where: { id: { in: viewedIds } },
-      select: { categoryId: true }
-    });
-
-    const uniqueCategoryIds = [...new Set(categories.map(c => c.categoryId))];
-
-    // Якщо немає унікальних категорій - повертаємо популярні
-    if (uniqueCategoryIds.length === 0) {
-      return this.getPopularListings(limit);
+    if (cachedRecommendations) {
+      return cachedRecommendations;
     }
 
-    // Пошук рекомендацій
-    return prisma.listing.findMany({
-      where: {
-        categoryId: { in: uniqueCategoryIds },
-        id: { notIn: viewedIds },
-        status: 'ACTIVE'
-      },
+    // Get user's viewed listings categories
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
       include: {
-        category: true,
-        seller: true
-      },
-      orderBy: [
-        { createdAt: 'desc' }, // Новіші
-        { views: 'desc' }      // Популярні
-      ],
-      take: limit
-    });
-  }
-
-  // Метод отримання популярних оголошень
-  private async getPopularListings(limit: number): Promise<ListingResponse[]> {
-    try {
-      const cacheKey = 'popular_listings';
-      const cached = await redis.get(cacheKey);
-      
-      if (cached) return JSON.parse(cached);
-
-      const popular = await prisma.listing.findMany({
-        where: { status: 'ACTIVE' },
-        include: {
-          category: true,
-          seller: true
+        listings: {
+          select: { category: true },
         },
-        orderBy: { views: 'desc' },
-        take: limit
-      });
+      },
+    });
 
-      await redis.setEx(cacheKey, this.CACHE_TTL, JSON.stringify(popular));
-      return popular;
-    } catch (error) {
-      logger.error('Failed to get popular listings:', error);
-      return [];
+    if (!user) {
+      throw new Error('User not found');
     }
-  }
 
-  // Інвалідація кешу рекомендацій
-  async invalidateRecommendations(userId: number) {
-    await redis.del(`recommendations:${userId}`);
-  }
-}
+    let recommendedListings = [];
 
-export const recommendationService = new RecommendationService();
+    // If user has listings, recommend similar ones
+    if (user.listings.length > 0) {
+      const userCategories = user.listings.map((listing) => listing.category);
+      
+      recommendedListings = await prisma.listing.findMany({
+        where: {
+          userId: { not: userId },
+          active: true,
+          category: { in: userCategories },
+        },
+        orderBy: [
+          { views: 'desc' },
+          { createdAt: 'desc' },
+        ],
+        take: limit,
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              avatar: true,
+            },
+          },
+        },
+      });
+    }
+
+    // If not enough recommendations, add popular listings
+    if (recommendedListings.length < limit) {
+      const remainingCount = limit - recommendedListings.length;
+      const existingIds = recommendedListings.map((listing) => listing.id);
+      
+      const popularListings = await prisma.listing.findMany({
+        where: {
+          id: { notIn: existingIds },
+          userId: { not: userId },
+          active: true,
+        },
+        orderBy: [
+          { views: 'desc' },
+        ],
+        take: remainingCount,
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              avatar: true,
+            },
+          },
+        },
+      });
+      
+      recommendedListings = [...recommendedListings, ...popularListings];
+    }
+
+    const result = { listings: recommendedListings };
+    
+    // Cache for 30 minutes
+    await setCache(cacheKey, result, 1800);
+    
+    return result;
+  },
+};
