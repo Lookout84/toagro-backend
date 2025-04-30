@@ -23,7 +23,7 @@
     "author": "",
     "license": "ISC",
     "dependencies": {
-        "@prisma/client": "^6.6.0",
+        "@prisma/client": "^6.7.0",
         "@types/socket.io": "^3.0.2",
         "amqplib": "^0.10.3",
         "axios": "^1.9.0",

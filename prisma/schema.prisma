@@ -243,7 +243,7 @@ enum ScheduledTaskStatus {
   COMPLETED
   FAILED
   CANCELLED
-  ACTIVE // Для регулярних завдань
+  ACTIVE
 }
 
 // Перерахування для статусів масових розсилок
