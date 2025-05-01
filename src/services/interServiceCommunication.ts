@@ -70,8 +70,8 @@ class InterServiceCommunication {
   
   private replyQueueName: string = '';
   private requestTimeout: number = 30000; // 30 секунд таймаут для запитів за замовчуванням
-  private serviceName: string = config.serviceName || 'toagro-api';
-  
+  // private serviceName: string = config.serviceName || 'toagro-api';
+  private serviceName: string = (config as any).serviceName || 'toagro-api';
   // Налаштування обміну
   private readonly RPC_EXCHANGE = 'rpc_exchange';
   

@@ -4,6 +4,19 @@ import { logger } from '../utils/logger';
 import axios from 'axios';
 import { config } from '../config/env';
 
+// Функція для роботи з помилками
+const handleAxiosError = (error: unknown): { message: string } => {
+  if (axios.isAxiosError(error)) {
+    return {
+      message: error.response?.data?.message || error.message
+    };
+  }
+  
+  return {
+    message: error instanceof Error ? error.message : 'Unknown error'
+  };
+};
+
 export const queueController = {
   /**
    * Отримання статистики черг
@@ -14,7 +27,7 @@ export const queueController = {
       const authString = Buffer.from(`${config.rabbitmqUser}:${config.rabbitmqPassword}`).toString('base64');
       
       // Отримуємо статистику черг через Management API
-      const response = await axios.get(`http://${config.rabbitmqHost || 'localhost'}:15672/api/queues`, {
+      const response = await axios.get(`http://${config.rabbitmqUrl}:15672/api/queues`, {
         headers: {
           'Authorization': `Basic ${authString}`
         }
@@ -44,11 +57,12 @@ export const queueController = {
         }
       });
     } catch (error) {
-      logger.error(`Error fetching queue stats: ${error}`);
+      const errorDetails = handleAxiosError(error);
+      logger.error(`Error fetching queue stats: ${errorDetails.message}`);
       res.status(500).json({
         status: 'error',
         message: 'Не вдалося отримати статистику черг',
-        error: error.message
+        error: errorDetails.message
       });
     }
   },
@@ -62,7 +76,7 @@ export const queueController = {
       const authString = Buffer.from(`${config.rabbitmqUser}:${config.rabbitmqPassword}`).toString('base64');
       
       // Отримуємо список черг через Management API
-      const response = await axios.get(`http://${config.rabbitmqHost || 'localhost'}:15672/api/queues`, {
+      const response = await axios.get(`http://${config.rabbitmqUrl}:15672/api/queues`, {
         headers: {
           'Authorization': `Basic ${authString}`
         }
@@ -85,11 +99,12 @@ export const queueController = {
         }
       });
     } catch (error) {
-      logger.error(`Error listing queues: ${error}`);
+      const errorDetails = handleAxiosError(error);
+      logger.error(`Error listing queues: ${errorDetails.message}`);
       res.status(500).json({
         status: 'error',
         message: 'Не вдалося отримати список черг',
-        error: error.message
+        error: errorDetails.message
       });
     }
   },
@@ -113,11 +128,11 @@ export const queueController = {
             messageCount
           }
         });
-    } catch (error) {
+      } catch (purgeError) {
         // Якщо клієнт не зміг очистити чергу, спробуємо через API
         const authString = Buffer.from(`${config.rabbitmqUser}:${config.rabbitmqPassword}`).toString('base64');
         
-        await axios.delete(`http://${config.rabbitmqHost || 'localhost'}:15672/api/queues/%2F/${queueName}/contents`, {
+        await axios.delete(`http://${config.rabbitmqUrl}:15672/api/queues/%2F/${queueName}/contents`, {
           headers: {
             'Authorization': `Basic ${authString}`
           }
@@ -129,11 +144,12 @@ export const queueController = {
         });
       }
     } catch (error) {
-      logger.error(`Error purging queue: ${error}`);
+      const errorDetails = handleAxiosError(error);
+      logger.error(`Error purging queue: ${errorDetails.message}`);
       res.status(500).json({
         status: 'error',
         message: 'Не вдалося очистити чергу',
-        error: error.message
+        error: errorDetails.message
       });
     }
   },
@@ -157,11 +173,11 @@ export const queueController = {
             messageCount
           }
         });
-      } catch (error) {
+      } catch (deleteError) {
         // Якщо клієнт не зміг видалити чергу, спробуємо через API
         const authString = Buffer.from(`${config.rabbitmqUser}:${config.rabbitmqPassword}`).toString('base64');
         
-        await axios.delete(`http://${config.rabbitmqHost || 'localhost'}:15672/api/queues/%2F/${queueName}`, {
+        await axios.delete(`http://${config.rabbitmqUrl}:15672/api/queues/%2F/${queueName}`, {
           headers: {
             'Authorization': `Basic ${authString}`
           }
@@ -173,11 +189,12 @@ export const queueController = {
         });
       }
     } catch (error) {
-      logger.error(`Error deleting queue: ${error}`);
+      const errorDetails = handleAxiosError(error);
+      logger.error(`Error deleting queue: ${errorDetails.message}`);
       res.status(500).json({
         status: 'error',
         message: 'Не вдалося видалити чергу',
-        error: error.message
+        error: errorDetails.message
       });
     }
   },
@@ -202,7 +219,7 @@ export const queueController = {
         ...message,
         _meta: {
           type: 'test',
-          sentBy: req.userId,
+          sentBy: (req as any).userId, // Приведення типу, оскільки userId може бути додано в middleware
           timestamp: new Date().toISOString(),
           environment: process.env.NODE_ENV
         }
@@ -227,11 +244,12 @@ export const queueController = {
         });
       }
     } catch (error) {
-      logger.error(`Error sending test message: ${error}`);
+      const errorDetails = handleAxiosError(error);
+      logger.error(`Error sending test message: ${errorDetails.message}`);
       res.status(500).json({
         status: 'error',
         message: 'Не вдалося надіслати тестове повідомлення',
-        error: error.message
+        error: errorDetails.message
       });
     }
   },
@@ -250,7 +268,7 @@ export const queueController = {
       
       // Отримуємо повідомлення з черги через Management API
       const response = await axios.post(
-        `http://${config.rabbitmqHost || 'localhost'}:15672/api/queues/%2F/${queueName}/get`, 
+        `http://${config.rabbitmqUrl}:15672/api/queues/%2F/${queueName}/get`, 
         {
           count,
           requeue,
@@ -276,9 +294,10 @@ export const queueController = {
             redelivered: msg.redelivered,
             exchange: msg.exchange,
           };
-        } catch (error) {
+        } catch (parseError) {
+          const errorMsg = parseError instanceof Error ? parseError.message : 'Unknown error';
           return {
-            error: 'Failed to parse message',
+            error: `Failed to parse message: ${errorMsg}`,
             raw: msg
           };
         }
@@ -294,11 +313,12 @@ export const queueController = {
         }
       });
     } catch (error) {
-      logger.error(`Error getting queue messages: ${error}`);
+      const errorDetails = handleAxiosError(error);
+      logger.error(`Error getting queue messages: ${errorDetails.message}`);
       res.status(500).json({
         status: 'error',
         message: 'Не вдалося отримати повідомлення з черги',
-        error: error.message
+        error: errorDetails.message
       });
     }
   },
@@ -312,7 +332,7 @@ export const queueController = {
       const authString = Buffer.from(`${config.rabbitmqUser}:${config.rabbitmqPassword}`).toString('base64');
       
       // Отримуємо інформацію про споживачів через Management API
-      const response = await axios.get(`http://${config.rabbitmqHost || 'localhost'}:15672/api/consumers`, {
+      const response = await axios.get(`http://${config.rabbitmqUrl}:15672/api/consumers`, {
         headers: {
           'Authorization': `Basic ${authString}`
         }
@@ -345,11 +365,12 @@ export const queueController = {
         }
       });
     } catch (error) {
-      logger.error(`Error getting consumers: ${error}`);
+      const errorDetails = handleAxiosError(error);
+      logger.error(`Error getting consumers: ${errorDetails.message}`);
       res.status(500).json({
         status: 'error',
         message: 'Не вдалося отримати інформацію про споживачів',
-        error: error.message
+        error: errorDetails.message
       });
     }
   }

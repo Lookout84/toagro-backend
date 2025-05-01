@@ -1,19 +1,18 @@
 import { rabbitmq } from '../utils/rabbitmq';
 import { logger } from '../utils/logger';
 import { prisma } from '../config/db';
-// import { notificationService, NotificationType, NotificationPriority } from './notificationService';
 import { notificationService, NotificationPriority } from './notificationService';
 import { NotificationType } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 import { Prisma } from '@prisma/client';
 
-// Константи для налаштувань черги
+// Queue configuration constants
 const BULK_NOTIFICATION_QUEUE = 'bulk_notifications';
-const BATCH_SIZE = 100; // Кількість сповіщень у одному пакеті
-const BATCH_INTERVAL = 1000; // Інтервал між відправкою пакетів у мілісекундах
+const BATCH_SIZE = 100; // Number of notifications in one batch
+const BATCH_INTERVAL = 1000; // Interval between sending batches in milliseconds
 
 /**
- * Інтерфейс для фільтрації користувачів при масовій розсилці
+ * Interface for user filtering during bulk notifications
  */
 export interface UserFilter {
   role?: string;
@@ -28,7 +27,7 @@ export interface UserFilter {
 }
 
 /**
- * Статуси завдань масової розсилки (мають відповідати enum у Prisma)
+ * Bulk notification task statuses (must match Prisma enum)
  */
 export const BulkNotificationStatus = {
   PENDING: 'PENDING',
@@ -41,48 +40,64 @@ export const BulkNotificationStatus = {
 export type BulkNotificationStatusType = keyof typeof BulkNotificationStatus;
 
 /**
- * Інтерфейс завдання масової розсилки
+ * Interface for bulk notification task
  */
 export interface BulkNotificationTask {
   id: string;
   type: NotificationType;
-  subject?: string;
+  subject?: string | null;
   content: string;
   userFilter?: UserFilter;
-  templateName?: string;
-  templateVariables?: Record<string, string>;
-  senderId?: number;
-  campaignId?: number;
-  priority?: NotificationPriority;
-  startedAt?: Date | string;
-  completedAt?: Date | string;
-  totalSent?: number;
-  totalFailed?: number;
-  status?: BulkNotificationStatusType;
+  templateName?: string | null;
+  totalSent: number;
+  totalFailed: number;
+  status: BulkNotificationStatusType;
+  startedAt?: Date | null;
+  completedAt?: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
   createdById: number;
+  senderId?: number | null;
+  campaignId?: number | null;
+  priority?: NotificationPriority;
+  templateVariables?: Record<string, string>;
+  // Include Prisma relation fields
+  createdBy?: any;
+  sender?: any;
+  campaign?: any;
 }
 
 /**
- * Сервіс для управління масовими розсилками сповіщень
+ * User data interface for notification processing
+ */
+interface UserNotificationData {
+  id: number;
+  email?: string;
+  name?: string;
+  phoneNumber?: string | null;
+}
+
+/**
+ * Service for managing bulk notification tasks
  */
 class BulkNotificationService {
   private activeJobs: Map<string, BulkNotificationTask> = new Map();
   
   /**
-   * Ініціалізація черги масових розсилок
+   * Initialize bulk notification queue
    */
   async initializeBulkNotifications(): Promise<void> {
     try {
       await rabbitmq.assertQueue(BULK_NOTIFICATION_QUEUE, { durable: true });
-      logger.info('Черга масових розсилок успішно ініціалізована');
+      logger.info('Bulk notification queue successfully initialized');
     } catch (error) {
-      logger.error(`Помилка ініціалізації черги масових розсилок: ${error}`);
+      logger.error(`Error initializing bulk notification queue: ${error}`);
       throw error;
     }
   }
 
   /**
-   * Додавання завдання на масову розсилку до черги
+   * Add bulk notification task to queue
    */
   async enqueueBulkNotification(
     type: NotificationType,
@@ -100,56 +115,57 @@ class BulkNotificationService {
   ): Promise<string> {
     try {
       const taskId = `bulk_${uuidv4()}`;
+      const now = new Date();
       
+      const taskData: Prisma.BulkNotificationCreateInput = {
+        id: taskId,
+        type,
+        content,
+        subject: options.subject,
+        userFilter: options.userFilter as Prisma.InputJsonValue,
+        templateName: options.templateName,
+        status: 'PENDING',
+        totalSent: 0,
+        totalFailed: 0,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: { connect: { id: createdById } },
+        sender: options.senderId ? { connect: { id: options.senderId } } : undefined,
+        campaign: options.campaignId ? { connect: { id: options.campaignId } } : undefined,
+        priority: options.priority || NotificationPriority.NORMAL,
+      };
+  
+      await prisma.bulkNotification.create({ data: taskData });
+  
       const task: BulkNotificationTask = {
         id: taskId,
         type,
         content,
-        createdById,
         subject: options.subject,
         userFilter: options.userFilter,
         templateName: options.templateName,
-        templateVariables: options.templateVariables,
-        senderId: options.senderId,
-        campaignId: options.campaignId,
-        priority: options.priority || NotificationPriority.NORMAL,
-        status: 'PENDING',
         totalSent: 0,
-        totalFailed: 0
+        totalFailed: 0,
+        status: 'PENDING' as BulkNotificationStatusType,
+        createdAt: now,
+        updatedAt: now,
+        createdById,
+        senderId: options.senderId || null,
+        campaignId: options.campaignId || null,
+        priority: options.priority || NotificationPriority.NORMAL,
+        templateVariables: options.templateVariables,
       };
-      
-      // Зберігаємо завдання в базі даних
-      await prisma.bulkNotification.create({
-        data: {
-          id: taskId,
-          type,
-          content,
-          subject: options.subject,
-          userFilter: options.userFilter as Prisma.JsonObject,
-          templateName: options.templateName,
-          status: 'PENDING',
-          senderId: options.senderId,
-          campaignId: options.campaignId,
-          priority: options.priority || NotificationPriority.NORMAL,
-          createdById,
-          totalSent: 0,
-          totalFailed: 0
-        }
-      });
-      
-      // Відправляємо завдання в чергу
+  
       await rabbitmq.sendToQueue(BULK_NOTIFICATION_QUEUE, task);
-      logger.info(`Завдання масової розсилки ${taskId} успішно додано до черги`);
-      
       return taskId;
     } catch (error) {
-      logger.error(`Помилка додавання завдання масової розсилки: ${error}`);
+      logger.error(`Failed to enqueue bulk notification: ${error}`);
       throw error;
     }
   }
 
   /**
-   * Додавання завдання на масову розсилку email
+   * Add bulk email notification task
    */
   async enqueueBulkEmailNotification(
     subject: string,
@@ -177,7 +193,7 @@ class BulkNotificationService {
   }
 
   /**
-   * Додавання завдання на масову розсилку SMS
+   * Add bulk SMS notification task
    */
   async enqueueBulkSmsNotification(
     content: string,
@@ -201,7 +217,7 @@ class BulkNotificationService {
   }
 
   /**
-   * Додавання завдання на масову розсилку Push сповіщень
+   * Add bulk Push notification task
    */
   async enqueueBulkPushNotification(
     title: string,
@@ -227,127 +243,170 @@ class BulkNotificationService {
   }
 
   /**
-   * Запуск обробника масових розсилок
+   * Start bulk notification worker
    */
   async startBulkNotificationWorker(): Promise<void> {
     try {
       await rabbitmq.consumeQueue(BULK_NOTIFICATION_QUEUE, async (content: any) => {
         const task = content as BulkNotificationTask;
         try {
-          logger.info(`Початок обробки завдання масової розсилки ${task.id}`);
+          logger.info(`Starting bulk notification task processing: ${task.id}`);
           
-          // Оновлюємо статус завдання в базі даних
-          await prisma.bulkNotification.update({
-            where: { id: task.id },
-            data: {
-              status: 'PROCESSING',
-              startedAt: new Date()
-            }
-          });
+          // Update task status in database
+          await this.updateTaskStatus(task.id, 'PROCESSING', { startedAt: new Date() });
           
-          // Оновлюємо локальний об'єкт завдання
+          // Update local task object
           task.status = 'PROCESSING';
-          task.startedAt = new Date().toISOString();
+          task.startedAt = new Date();
           this.activeJobs.set(task.id, task);
           
-          // Отримуємо користувачів за вказаним фільтром
+          // Get users by filter
           const users = await this.getUsersByFilter(task.userFilter);
-          logger.info(`Знайдено ${users.length} користувачів для завдання ${task.id}`);
+          logger.info(`Found ${users.length} users for task ${task.id}`);
           
           if (users.length === 0) {
             await this.completeTask(task.id, 0, 0);
             return;
           }
           
-          // Відправляємо сповіщення пакетами
+          // Process notifications in batches
+          let totalSuccess = 0;
+          let totalFailure = 0;
+          
           for (let i = 0; i < users.length; i += BATCH_SIZE) {
             const batch = users.slice(i, i + BATCH_SIZE);
             const { successCount, failureCount } = await this.processBatch(task, batch);
             
-            // Оновлюємо лічильники у базі даних
-            await prisma.bulkNotification.update({
-              where: { id: task.id },
-              data: {
-                totalSent: { increment: successCount },
-                totalFailed: { increment: failureCount }
-              }
-            });
+            totalSuccess += successCount;
+            totalFailure += failureCount;
             
-            // Додаємо затримку між пакетами, щоб уникнути перевантаження
+            // Update task counters in database
+            await this.updateTaskCounters(task.id, successCount, failureCount);
+            
+            // Add delay between batches to avoid overload
             if (i + BATCH_SIZE < users.length) {
               await new Promise(resolve => setTimeout(resolve, BATCH_INTERVAL));
             }
           }
           
-          await this.completeTask(task.id, users.length, 0);
+          await this.completeTask(task.id, totalSuccess, totalFailure);
         } catch (error) {
-          logger.error(`Помилка обробки завдання масової розсилки: ${error}`);
+          logger.error(`Error processing bulk notification task: ${error}`);
           await this.failTask(task.id, error);
         }
       });
       
-      logger.info('Обробник масових розсилок успішно запущений');
+      logger.info('Bulk notification worker successfully started');
     } catch (error) {
-      logger.error(`Помилка запуску обробника масових розсилок: ${error}`);
+      logger.error(`Error starting bulk notification worker: ${error}`);
       throw error;
     }
   }
 
   /**
-   * Помічає завдання як успішно завершене
+   * Update task status in database
+   */
+  private async updateTaskStatus(
+    taskId: string, 
+    status: BulkNotificationStatusType, 
+    additionalData: Record<string, any> = {}
+  ): Promise<void> {
+    try {
+      await prisma.bulkNotification.update({
+        where: { id: taskId },
+        data: {
+          status,
+          updatedAt: new Date(),
+          ...additionalData
+        }
+      });
+    } catch (error) {
+      logger.error(`Failed to update task status for ${taskId}: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Update task counters in database
+   */
+  private async updateTaskCounters(
+    taskId: string,
+    successIncrement: number,
+    failureIncrement: number
+  ): Promise<void> {
+    try {
+      await prisma.bulkNotification.update({
+        where: { id: taskId },
+        data: {
+          totalSent: { increment: successIncrement },
+          totalFailed: { increment: failureIncrement },
+          updatedAt: new Date()
+        }
+      });
+    } catch (error) {
+      logger.error(`Failed to update task counters for ${taskId}: ${error}`);
+      // Don't throw here to avoid interrupting the process
+    }
+  }
+
+  /**
+   * Mark task as successfully completed
    */
   private async completeTask(taskId: string, successCount: number, failureCount: number): Promise<void> {
-    await prisma.bulkNotification.update({
-      where: { id: taskId },
-      data: {
-        status: 'COMPLETED',
-        completedAt: new Date(),
-        totalSent: { increment: successCount },
-        totalFailed: { increment: failureCount }
-      }
-    });
-    this.activeJobs.delete(taskId);
-    logger.info(`Завдання масової розсилки ${taskId} успішно завершено`);
+    try {
+      await prisma.bulkNotification.update({
+        where: { id: taskId },
+        data: {
+          status: 'COMPLETED',
+          completedAt: new Date(),
+          updatedAt: new Date(),
+          totalSent: { increment: successCount },
+          totalFailed: { increment: failureCount }
+        }
+      });
+      this.activeJobs.delete(taskId);
+      logger.info(`Task ${taskId} completed successfully`);
+    } catch (error) {
+      logger.error(`Failed to complete task ${taskId}: ${error}`);
+    }
   }
 
   /**
-   * Помічає завдання як невдале
+   * Mark task as failed
    */
   private async failTask(taskId: string, error: any): Promise<void> {
-    await prisma.bulkNotification.update({
-      where: { id: taskId },
-      data: {
-        status: 'FAILED',
-        completedAt: new Date()
-      }
-    });
-    this.activeJobs.delete(taskId);
-    logger.error(`Завдання масової розсилки ${taskId} завершилося з помилкою: ${error}`);
+    try {
+      await prisma.bulkNotification.update({
+        where: { id: taskId },
+        data: {
+          status: 'FAILED',
+          completedAt: new Date(),
+          updatedAt: new Date()
+        }
+      });
+      this.activeJobs.delete(taskId);
+      logger.error(`Task ${taskId} failed: ${error}`);
+    } catch (dbError) {
+      logger.error(`Failed to update failed task ${taskId} in database: ${dbError}`);
+    }
   }
-
+  
   /**
-   * Обробка пакету користувачів
+   * Process batch of users
    */
-  private async processBatch(task: BulkNotificationTask, users: any[]): Promise<{ successCount: number, failureCount: number }> {
+  private async processBatch(
+    task: BulkNotificationTask, 
+    users: UserNotificationData[]
+  ): Promise<{ successCount: number, failureCount: number }> {
     let successCount = 0;
     let failureCount = 0;
 
     for (const user of users) {
       try {
-        switch (task.type) {
-          case NotificationType.EMAIL:
-            await this.processBatchEmailNotification(task, user);
-            break;
-          case NotificationType.SMS:
-            await this.processBatchSmsNotification(task, user);
-            break;
-          case NotificationType.PUSH:
-            await this.processBatchPushNotification(task, user);
-            break;
-        }
+        await this.processUserNotification(task, user);
         successCount++;
       } catch (error) {
-        logger.error(`Помилка відправки сповіщення користувачу ${user.id}: ${error}`);
+        logger.error(`Error sending notification to user ${user.id}: ${error}`);
         failureCount++;
       }
     }
@@ -356,34 +415,77 @@ class BulkNotificationService {
   }
 
   /**
-   * Обробка пакету email сповіщень
+   * Process notification for a single user
    */
-  private async processBatchEmailNotification(task: BulkNotificationTask, user: any): Promise<void> {
-    if (!user.email) {
-      logger.warn(`Користувач ${user.id} не має email адреси`);
-      throw new Error('Користувач не має email адреси');
+  private async processUserNotification(
+    task: BulkNotificationTask, 
+    user: UserNotificationData
+  ): Promise<void> {
+    // Prepare personalized content with template variables
+    const variables = this.prepareTemplateVariables(task, user);
+    const content = this.replaceTemplateVariables(task.content, variables);
+    const subject = task.subject ? this.replaceTemplateVariables(task.subject, variables) : '';
+    
+    switch (task.type) {
+      case NotificationType.EMAIL:
+        await this.processEmailNotification(task, user, subject, content, variables);
+        break;
+      case NotificationType.SMS:
+        await this.processSmsNotification(task, user, content);
+        break;
+      case NotificationType.PUSH:
+        await this.processPushNotification(task, user, subject, content);
+        break;
+      default:
+        throw new Error(`Unsupported notification type: ${task.type}`);
     }
-    
-    // Підготовка персоналізованого вмісту
-    let content = task.content;
-    let subject = task.subject || '';
-    
-    // Заміна змінних у вмісті
-    const variables = {
-      name: user.name || 'користувач',
-      email: user.email,
+  }
+
+  /**
+   * Prepare template variables for a user
+   */
+  private prepareTemplateVariables(
+    task: BulkNotificationTask, 
+    user: UserNotificationData
+  ): Record<string, string> {
+    return {
+      name: user.name || 'user',
+      email: user.email || '',
       id: user.id.toString(),
-      ...task.templateVariables,
+      ...(task.templateVariables || {})
     };
-    
-    // Замінюємо змінні у вмісті та темі
+  }
+
+  /**
+   * Replace template variables in text
+   */
+  private replaceTemplateVariables(
+    text: string, 
+    variables: Record<string, string>
+  ): string {
+    let result = text;
     for (const [key, value] of Object.entries(variables)) {
       const regex = new RegExp(`{{${key}}}`, 'g');
-      content = content.replace(regex, value);
-      subject = subject.replace(regex, value);
+      result = result.replace(regex, value);
+    }
+    return result;
+  }
+
+  /**
+   * Process email notification
+   */
+  private async processEmailNotification(
+    task: BulkNotificationTask,
+    user: UserNotificationData,
+    subject: string,
+    content: string,
+    variables: Record<string, string>
+  ): Promise<void> {
+    if (!user.email) {
+      throw new Error(`User ${user.id} has no email address`);
     }
     
-    // Відправка сповіщення
+    // Send notification
     if (task.templateName) {
       await notificationService.sendTemplateNotification(
         task.templateName,
@@ -406,31 +508,17 @@ class BulkNotificationService {
   }
 
   /**
-   * Обробка пакету SMS сповіщень
+   * Process SMS notification
    */
-  private async processBatchSmsNotification(task: BulkNotificationTask, user: any): Promise<void> {
+  private async processSmsNotification(
+    task: BulkNotificationTask,
+    user: UserNotificationData,
+    content: string
+  ): Promise<void> {
     if (!user.phoneNumber) {
-      logger.warn(`Користувач ${user.id} не має номеру телефону`);
-      throw new Error('Користувач не має номеру телефону');
+      throw new Error(`User ${user.id} has no phone number`);
     }
     
-    // Підготовка персоналізованого вмісту
-    let content = task.content;
-    
-    // Заміна змінних у вмісті
-    const variables = {
-      name: user.name || 'користувач',
-      id: user.id.toString(),
-      ...task.templateVariables,
-    };
-    
-    // Замінюємо змінні у вмісті
-    for (const [key, value] of Object.entries(variables)) {
-      const regex = new RegExp(`{{${key}}}`, 'g');
-      content = content.replace(regex, value);
-    }
-    
-    // Відправка SMS сповіщення
     await notificationService.sendSmsNotification(
       user.id,
       user.phoneNumber,
@@ -440,54 +528,45 @@ class BulkNotificationService {
   }
 
   /**
-   * Обробка пакету Push сповіщень
+   * Process Push notification
    */
-  private async processBatchPushNotification(task: BulkNotificationTask, user: any): Promise<void> {
-    // Отримання токенів пристроїв користувача
+  private async processPushNotification(
+    task: BulkNotificationTask,
+    user: UserNotificationData,
+    title: string,
+    content: string
+  ): Promise<void> {
     const deviceTokens = await this.getUserDeviceTokens(user.id);
     
     if (deviceTokens.length === 0) {
-      logger.warn(`Користувач ${user.id} не має зареєстрованих пристроїв`);
-      throw new Error('Користувач не має зареєстрованих пристроїв');
+      throw new Error(`User ${user.id} has no registered devices`);
     }
     
-    // Підготовка персоналізованого вмісту
-    let content = task.content;
-    let title = task.subject || 'Сповіщення';
+    let successCount = 0;
     
-    // Заміна змінних у вмісті
-    const variables = {
-      name: user.name || 'користувач',
-      id: user.id.toString(),
-      ...task.templateVariables,
-    };
-    
-    // Замінюємо змінні у вмісті та заголовку
-    for (const [key, value] of Object.entries(variables)) {
-      const regex = new RegExp(`{{${key}}}`, 'g');
-      content = content.replace(regex, value);
-      title = title.replace(regex, value);
-    }
-    
-    // Відправка Push сповіщень на всі пристрої користувача
     for (const deviceToken of deviceTokens) {
       try {
         await notificationService.sendPushNotification(
           user.id,
           deviceToken,
-          title,
+          title || 'Notification',
           content,
           undefined,
           task.priority
         );
+        successCount++;
       } catch (error) {
-        logger.error(`Помилка відправки push сповіщення на пристрій ${deviceToken}: ${error}`);
+        logger.error(`Error sending push notification to device ${deviceToken}: ${error}`);
       }
+    }
+    
+    if (successCount === 0) {
+      throw new Error(`Failed to send push notifications to all devices for user ${user.id}`);
     }
   }
 
   /**
-   * Отримання токенів пристроїв користувача
+   * Get user device tokens
    */
   private async getUserDeviceTokens(userId: number): Promise<string[]> {
     try {
@@ -498,18 +577,18 @@ class BulkNotificationService {
       
       return userDevices.map(device => device.token);
     } catch (error) {
-      logger.error(`Помилка отримання токенів пристроїв для користувача ${userId}: ${error}`);
+      logger.error(`Error getting device tokens for user ${userId}: ${error}`);
       return [];
     }
   }
 
   /**
-   * Отримання користувачів за вказаним фільтром
+   * Get users by filter
    */
-  private async getUsersByFilter(filter?: UserFilter): Promise<any[]> {
+  private async getUsersByFilter(filter?: UserFilter): Promise<UserNotificationData[]> {
     try {
       if (!filter) {
-        // Якщо фільтр не вказаний, повертаємо всіх верифікованих користувачів
+        // If no filter is specified, return all verified users
         return await prisma.user.findMany({
           where: { isVerified: true },
           select: {
@@ -521,11 +600,11 @@ class BulkNotificationService {
         });
       }
       
-      // Будуємо умови для фільтрації
-      const where: any = {};
+      // Build filter conditions
+      const where: Prisma.UserWhereInput = {};
       
       if (filter.role) {
-        where.role = filter.role;
+        where.role = filter.role as any; // Cast to any to handle the enum
       }
       
       if (filter.isVerified !== undefined) {
@@ -534,14 +613,30 @@ class BulkNotificationService {
       
       if (filter.createdBefore || filter.createdAfter) {
         where.createdAt = {};
-        if (filter.createdBefore) where.createdAt.lt = new Date(filter.createdBefore);
-        if (filter.createdAfter) where.createdAt.gt = new Date(filter.createdAfter);
+        if (filter.createdBefore) {
+          where.createdAt.lt = filter.createdBefore instanceof Date 
+            ? filter.createdBefore 
+            : new Date(filter.createdBefore);
+        }
+        if (filter.createdAfter) {
+          where.createdAt.gt = filter.createdAfter instanceof Date 
+            ? filter.createdAfter 
+            : new Date(filter.createdAfter);
+        }
       }
       
       if (filter.lastLoginBefore || filter.lastLoginAfter) {
         where.lastLoginAt = {};
-        if (filter.lastLoginBefore) where.lastLoginAt.lt = new Date(filter.lastLoginBefore);
-        if (filter.lastLoginAfter) where.lastLoginAt.gt = new Date(filter.lastLoginAfter);
+        if (filter.lastLoginBefore) {
+          where.lastLoginAt.lt = filter.lastLoginBefore instanceof Date 
+            ? filter.lastLoginBefore 
+            : new Date(filter.lastLoginBefore);
+        }
+        if (filter.lastLoginAfter) {
+          where.lastLoginAt.gt = filter.lastLoginAfter instanceof Date 
+            ? filter.lastLoginAfter 
+            : new Date(filter.lastLoginAfter);
+        }
       }
       
       if (filter.hasListings !== undefined) {
@@ -553,14 +648,16 @@ class BulkNotificationService {
       }
       
       if (filter.categoryIds && filter.categoryIds.length > 0) {
-        where.userCategories = {
+        // Use correct Prisma relation field name based on schema
+        // Check if it's UserCategory or similar in your schema
+        (where as any).userCategories = {
           some: {
             categoryId: { in: filter.categoryIds },
           },
         };
       }
       
-      // Отримуємо відфільтрованих користувачів
+      // Get filtered users
       return await prisma.user.findMany({
         where,
         select: {
@@ -571,13 +668,13 @@ class BulkNotificationService {
         },
       });
     } catch (error) {
-      logger.error(`Помилка отримання користувачів за фільтром: ${error}`);
+      logger.error(`Error getting users by filter: ${error}`);
       return [];
     }
   }
 
   /**
-   * Отримання статусу завдання
+   * Get task status
    */
   async getTaskStatus(taskId: string): Promise<{
     id: string;
@@ -590,82 +687,89 @@ class BulkNotificationService {
     subject?: string;
     createdById: number;
   } | null> {
-    // Спочатку перевіряємо активні завдання
-    const activeTask = this.activeJobs.get(taskId);
-    if (activeTask) {
-      return {
-        id: activeTask.id,
-        status: activeTask.status || 'PENDING',
-        totalSent: activeTask.totalSent || 0,
-        totalFailed: activeTask.totalFailed || 0,
-        startedAt: activeTask.startedAt,
-        completedAt: activeTask.completedAt,
-        type: activeTask.type,
-        subject: activeTask.subject,
-        createdById: activeTask.createdById
-      };
-    }
-    
-    // Якщо завдання не активне, шукаємо в базі даних
-    const task = await prisma.bulkNotification.findUnique({
-      where: { id: taskId },
-      select: {
-        id: true,
-        status: true,
-        totalSent: true,
-        totalFailed: true,
-        startedAt: true,
-        completedAt: true,
-        type: true,
-        subject: true,
-        createdById: true
+    try {
+      // Check if task is in active jobs map
+      const activeTask = this.activeJobs.get(taskId);
+      if (activeTask) {
+        return {
+          id: activeTask.id,
+          status: activeTask.status,
+          totalSent: activeTask.totalSent,
+          totalFailed: activeTask.totalFailed,
+          startedAt: activeTask.startedAt?.toISOString(),
+          completedAt: activeTask.completedAt?.toISOString(),
+          type: activeTask.type,
+          subject: activeTask.subject || undefined,
+          createdById: activeTask.createdById
+        };
       }
-    });
     
-    if (!task) return null;
+      // Get task from database
+      const task = await prisma.bulkNotification.findUnique({
+        where: { id: taskId },
+        select: {
+          id: true,
+          status: true,
+          totalSent: true,
+          totalFailed: true,
+          startedAt: true,
+          completedAt: true,
+          type: true,
+          subject: true,
+          createdById: true
+        }
+      });
     
-    return {
-      id: task.id,
-      status: task.status as BulkNotificationStatusType,
-      totalSent: task.totalSent,
-      totalFailed: task.totalFailed,
-      startedAt: task.startedAt?.toISOString(),
-      completedAt: task.completedAt?.toISOString(),
-      type: task.type as NotificationType,
-      subject: task.subject || undefined,
-      createdById: task.createdById
-    };
+      if (!task) return null;
+    
+      return {
+        id: task.id,
+        status: task.status as BulkNotificationStatusType,
+        totalSent: task.totalSent,
+        totalFailed: task.totalFailed,
+        startedAt: task.startedAt?.toISOString(),
+        completedAt: task.completedAt?.toISOString(),
+        type: task.type,
+        subject: task.subject || undefined,
+        createdById: task.createdById
+      };
+    } catch (error) {
+      logger.error(`Error getting task status for ${taskId}: ${error}`);
+      return null;
+    }
   }
 
   /**
-   * Скасування завдання
+   * Cancel task
    */
   async cancelTask(taskId: string): Promise<boolean> {
-    // Перевіряємо, чи завдання є активним
-    const activeTask = this.activeJobs.get(taskId);
-    if (activeTask) {
-      activeTask.status = 'CANCELLED';
-      this.activeJobs.delete(taskId);
-    }
-    
     try {
-      // Оновлюємо статус завдання в базі даних
+      // Check if task is active and remove from active jobs
+      const activeTask = this.activeJobs.get(taskId);
+      if (activeTask) {
+        this.activeJobs.delete(taskId);
+      }
+      
+      // Update task status in database
       await prisma.bulkNotification.update({
         where: { id: taskId },
         data: { 
           status: 'CANCELLED',
-          completedAt: new Date()
+          completedAt: new Date(),
+          updatedAt: new Date()
         },
       });
+      
+      logger.info(`Task ${taskId} cancelled successfully`);
       return true;
     } catch (error) {
-      logger.error(`Помилка скасування завдання ${taskId}: ${error}`);
+      logger.error(`Error cancelling task ${taskId}: ${error}`);
       return false;
     }
   }
 
   /**
-   * Отримання списку активних завдань
+   * Get list of active jobs
    */
   getActiveJobs(): {
     id: string;
@@ -679,14 +783,14 @@ class BulkNotificationService {
     return Array.from(this.activeJobs.values()).map(task => ({
       id: task.id,
       type: task.type,
-      status: task.status || 'PENDING',
-      startedAt: task.startedAt,
-      totalSent: task.totalSent || 0,
-      totalFailed: task.totalFailed || 0,
+      status: task.status,
+      startedAt: task.startedAt?.toISOString(),
+      totalSent: task.totalSent,
+      totalFailed: task.totalFailed,
       createdById: task.createdById
     }));
   }
 }
 
-// Експортуємо єдиний екземпляр сервісу
+// Export single service instance
 export const bulkNotificationService = new BulkNotificationService();

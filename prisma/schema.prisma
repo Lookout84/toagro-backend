@@ -104,21 +104,45 @@ model RecurringTask {
 
 // Модель для масових розсилок
 model BulkNotification {
-  id             String           @id
+  id             String                 @id
   type           NotificationType
   subject        String?
   content        String
   userFilter     Json?
   templateName   String?
-  totalSent      Int              @default(0)
-  totalFailed    Int              @default(0)
+  totalSent      Int                    @default(0)
+  totalFailed    Int                    @default(0)
   status         BulkNotificationStatus @default(PENDING)
   startedAt      DateTime?
   completedAt    DateTime?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
   createdById    Int
-  createdBy      User             @relation(fields: [createdById], references: [id])
+  createdBy      User                   @relation(fields: [createdById], references: [id])
+  senderId       Int?
+  sender         User?                  @relation("SenderNotifications", fields: [senderId], references: [id])
+  campaignId     Int?
+  campaign       Campaign?              @relation(fields: [campaignId], references: [id])
+  priority       String?                @default("NORMAL") // Використовуємо String бо NotificationPriority, можливо, не enum в Prisma
+}
+
+model Campaign {
+  id                Int               @id @default(autoincrement())
+  name              String
+  description       String?
+  type              CampaignType
+  status            CampaignStatus    @default(DRAFT)
+  startDate         DateTime?
+  endDate           DateTime?
+  targetAudience    Json?             // Фільтр цільової аудиторії
+  goal              String?
+  budget            Float?
+  performance       Json?             // Статистика ефективності
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  createdById       Int
+  createdBy         User              @relation(fields: [createdById], references: [id])
+  bulkNotifications BulkNotification[]
 }
 
 model User {
@@ -146,7 +170,9 @@ model User {
   createdTemplates   NotificationTemplate[]
   scheduledTasks     ScheduledTask[]
   recurringTasks     RecurringTask[]
-  bulkNotifications  BulkNotification[]
+  bulkNotifications      BulkNotification[] @relation()
+  sentNotifications      BulkNotification[] @relation("SenderNotifications")
+  createdCampaigns Campaign[]
 }
 
 enum UserRole {
@@ -227,6 +253,7 @@ enum NotificationType {
   EMAIL
   SMS
   PUSH
+  IN_APP
 }
 
 // Перерахування для пріоритетів сповіщень
@@ -252,5 +279,25 @@ enum BulkNotificationStatus {
   PROCESSING
   COMPLETED
   FAILED
+  CANCELLED
+}
+
+enum CampaignType {
+  EMAIL
+  SMS
+  PUSH
+  MIXED
+  PROMO
+  EVENT
+  NEWSLETTER
+}
+
+// Перерахування для статусів кампаній
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  PAUSED
+  COMPLETED
   CANCELLED
 }

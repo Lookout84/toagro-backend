@@ -7,6 +7,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import swaggerUi from 'swagger-ui-express';
 import swaggerJsdoc from 'swagger-jsdoc';
+import net from 'net'; // Додано для перевірки доступності порту
 import { config } from './config/env';
 import { setupSocket } from './sockets/chatSocket';
 import { logger } from './utils/logger';
@@ -29,6 +30,49 @@ import adminRoutes from './routes/admin';
 import categoryRoutes from './routes/categories';
 import notificationRoutes from './routes/notifications';
 import queueRoutes from './routes/queues';
+
+// Функція для перевірки доступності порту
+const isPortAvailable = (port: number): Promise<boolean> => {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    
+    server.once('error', (err: any) => {
+      if (err.code === 'EADDRINUSE') {
+        // Порт зайнятий
+        resolve(false);
+      } else {
+        // Інша помилка
+        logger.error(`Error checking port ${port}: ${err.message}`);
+        resolve(false);
+      }
+    });
+    
+    server.once('listening', () => {
+      // Порт вільний, закриваємо тестовий сервер
+      server.close(() => resolve(true));
+    });
+    
+    server.listen(port);
+  });
+};
+
+// Функція для пошуку вільного порту
+const findAvailablePort = async (startPort: number, maxAttempts: number = 10): Promise<number> => {
+  let port = startPort;
+  let attempts = 0;
+  
+  while (attempts < maxAttempts) {
+    if (await isPortAvailable(port)) {
+      return port;
+    }
+    
+    logger.warn(`Port ${port} is already in use, trying port ${port + 1}`);
+    port++;
+    attempts++;
+  }
+  
+  throw new Error(`Could not find available port after ${maxAttempts} attempts`);
+};
 
 // Swagger configuration
 const swaggerOptions = {
@@ -53,6 +97,17 @@ const swaggerOptions = {
 const app: Express = express();
 const httpServer = createServer(app);
 
+// Додаємо обробник помилок для сервера
+httpServer.on('error', (error: any) => {
+  if (error.code === 'EADDRINUSE') {
+    logger.error(`Port ${config.port} is already in use. Trying to find an alternative port.`);
+    // Не завершуємо процес, оскільки startServer буде шукати новий порт
+  } else {
+    logger.error(`Server error: ${error.message}`);
+    process.exit(1);
+  }
+});
+
 // Socket.io singleton instance
 let io: Server | null = null;
 
@@ -76,115 +131,47 @@ const initializeSocketIO = () => {
 const initializeServices = async () => {
   try {
     // Connect to Redis
-    await redisClient.connect();
-    logger.info('Redis connected successfully');
+    try {
+      await redisClient.connect();
+      logger.info('Redis connected successfully');
+    } catch (error) {
+      logger.error('Failed to connect to Redis:', error);
+      // Продовжуємо без Redis, якщо не вдалося підключитися
+    }
 
     // Connect to RabbitMQ
-    await rabbitmq.connect();
-    logger.info('RabbitMQ connected successfully');
+    try {
+      await rabbitmq.connect();
+      logger.info('RabbitMQ connected successfully');
 
-    // Initialize message queues
-    await notificationService.initializeNotifications();
-    await scheduledTaskService.initializeScheduledTasks();
-    await bulkNotificationService.initializeBulkNotifications();
-    logger.info('RabbitMQ queues initialized');
+      // Initialize message queues
+      await notificationService.initializeNotifications();
+      await scheduledTaskService.initializeScheduledTasks();
+      await bulkNotificationService.initializeBulkNotifications();
+      logger.info('RabbitMQ queues initialized');
 
-    // Initialize inter-service communication
-    await interServiceCommunication.initialize();
-    
-    // Set up request handlers for inter-service communication
-    await interServiceCommunication.handleRequests(
-      RequestType.GET_USER_INFO,
-      async (payload) => {
-        const { userId } = payload;
-        
-        const user = await prisma.user.findUnique({
-          where: { id: userId },
-          select: {
-            id: true,
-            email: true,
-            name: true,
-            role: true,
-            isVerified: true,
-            createdAt: true,
-          },
-        });
-        
-        if (!user) {
-          throw new Error('User not found');
-        }
-        
-        return user;
-      }
-    );
-    
-    await interServiceCommunication.handleRequests(
-      RequestType.GET_LISTING_INFO,
-      async (payload) => {
-        const { listingId } = payload;
-        
-        const listing = await prisma.listing.findUnique({
-          where: { id: listingId },
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-              },
-            },
-            categoryRel: {
-              select: {
-                id: true,
-                name: true,
-                slug: true,
-              },
-            },
-          },
-        });
-        
-        if (!listing) {
-          throw new Error('Listing not found');
-        }
-        
-        return listing;
-      }
-    );
-    
-    await interServiceCommunication.handleRequests(
-      RequestType.CHECK_PAYMENT_STATUS,
-      async (payload) => {
-        const { transactionId } = payload;
-        
-        const payment = await prisma.payment.findUnique({
-          where: { transactionId },
-          select: {
-            id: true,
-            userId: true,
-            amount: true,
-            currency: true,
-            status: true,
-            transactionId: true,
-            createdAt: true,
-            completedAt: true,
-          },
-        });
-        
-        if (!payment) {
-          throw new Error('Payment not found');
-        }
-        
-        return payment;
-      }
-    );
-    
-    logger.info('Inter-service communication handlers set up');
+      // Initialize inter-service communication
+      await interServiceCommunication.initialize();
+      
+      // Set up request handlers for inter-service communication
+      await setupInterServiceHandlers();
+      
+      logger.info('Inter-service communication handlers set up');
+    } catch (error) {
+      logger.error('Failed to connect to RabbitMQ:', error);
+      // Продовжуємо без RabbitMQ, якщо не вдалося підключитися
+    }
 
     // Setup Swagger documentation
     if (config.nodeEnv !== 'production') {
-      const specs = swaggerJsdoc(swaggerOptions);
-      app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
-      logger.info(`Swagger docs available at http://localhost:${config.port}/api-docs`);
+      try {
+        const specs = swaggerJsdoc(swaggerOptions);
+        app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
+        logger.info(`Swagger docs available at http://localhost:${config.port}/api-docs`);
+      } catch (error) {
+        logger.error('Failed to setup Swagger:', error);
+        // Продовжуємо без Swagger, якщо не вдалося налаштувати
+      }
     }
 
     // Initialize Socket.io
@@ -195,6 +182,94 @@ const initializeServices = async () => {
   }
 };
 
+// Налаштування обробників міжсервісної комунікації
+const setupInterServiceHandlers = async () => {
+  await interServiceCommunication.handleRequests(
+    RequestType.GET_USER_INFO,
+    async (payload) => {
+      const { userId } = payload;
+      
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          isVerified: true,
+          createdAt: true,
+        },
+      });
+      
+      if (!user) {
+        throw new Error('User not found');
+      }
+      
+      return user;
+    }
+  );
+  
+  await interServiceCommunication.handleRequests(
+    RequestType.GET_LISTING_INFO,
+    async (payload) => {
+      const { listingId } = payload;
+      
+      const listing = await prisma.listing.findUnique({
+        where: { id: listingId },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          categoryRel: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+            },
+          },
+        },
+      });
+      
+      if (!listing) {
+        throw new Error('Listing not found');
+      }
+      
+      return listing;
+    }
+  );
+  
+  await interServiceCommunication.handleRequests(
+    RequestType.CHECK_PAYMENT_STATUS,
+    async (payload) => {
+      const { transactionId } = payload;
+      
+      const payment = await prisma.payment.findUnique({
+        where: { transactionId },
+        select: {
+          id: true,
+          userId: true,
+          amount: true,
+          currency: true,
+          status: true,
+          transactionId: true,
+          createdAt: true,
+          completedAt: true,
+        },
+      });
+      
+      if (!payment) {
+        throw new Error('Payment not found');
+      }
+      
+      return payment;
+    }
+  );
+};
+
 // Graceful shutdown handler
 const shutdown = async () => {
   try {
@@ -202,8 +277,22 @@ const shutdown = async () => {
     
     await Promise.allSettled([
       prisma.$disconnect(),
-      redisClient.disconnect(),
-      rabbitmq.close(),
+      (async () => {
+        try {
+          if (redisClient.isOpen) {
+            await redisClient.disconnect();
+          }
+        } catch (error) {
+          logger.error('Error disconnecting Redis:', error);
+        }
+      })(),
+      (async () => {
+        try {
+          await rabbitmq.close();
+        } catch (error) {
+          logger.error('Error closing RabbitMQ connection:', error);
+        }
+      })(),
       new Promise<void>((resolve) => {
         if (io) {
           io.close(() => {
@@ -266,9 +355,27 @@ app.use(errorHandler);
 // Start server
 const startServer = async () => {
   try {
+    // Перевіряємо доступність порту перед запуском сервера
+    const availablePort = await findAvailablePort(config.port);
+    
+    if (availablePort !== config.port) {
+      logger.warn(`Original port ${config.port} is not available, using port ${availablePort} instead`);
+      config.port = availablePort;
+      
+      // Оновлюємо URL серверів у Swagger
+      swaggerOptions.definition.servers[0].url = `http://localhost:${config.port}`;
+    }
+    
     await initializeServices();
     
-    httpServer.listen(config.port, () => {
+    // Налаштування для повторного використання адреси
+    const serverOptions = {
+      host: config.host || '0.0.0.0',
+      port: config.port,
+      exclusive: false, // Дозволяє кільком серверам спільно використовувати порт
+    };
+    
+    httpServer.listen(serverOptions, () => {
       logger.info(`Server running in ${config.nodeEnv} mode on port ${config.port}`);
       logger.info(`CORS configured for: ${config.corsOrigin || '*'}`);
     });
