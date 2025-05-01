@@ -399,8 +399,13 @@ export const campaignService = {
   /**
    * Деактивація кампанії (пауза або скасування)
    */
-  async deactivateCampaign(id: number, status: CampaignStatus.PAUSED | CampaignStatus.CANCELLED) {
+  async deactivateCampaign(id: number, status: CampaignStatus) {
     try {
+      // Перевіряємо, що статус є PAUSED або CANCELLED
+      if (status !== CampaignStatus.PAUSED && status !== CampaignStatus.CANCELLED) {
+        throw new Error(`Invalid deactivation status: ${status}. Must be PAUSED or CANCELLED.`);
+      }
+
       const campaign = await prisma.campaign.findUnique({
         where: { id },
         include: {
@@ -545,7 +550,7 @@ export const campaignService = {
           taskId = await bulkNotificationService.enqueueBulkEmailNotification(
             subject!,
             content,
-            userFilter,
+            userFilter as any,
             {
               senderId: campaign.createdById,
               campaignId: campaign.id,
@@ -556,7 +561,7 @@ export const campaignService = {
         case NotificationType.SMS:
           taskId = await bulkNotificationService.enqueueBulkSmsNotification(
             content,
-            userFilter,
+            userFilter as any,
             {
               senderId: campaign.createdById,
               campaignId: campaign.id,
@@ -568,7 +573,7 @@ export const campaignService = {
           taskId = await bulkNotificationService.enqueueBulkPushNotification(
             subject!,
             content,
-            userFilter,
+            userFilter as any,
             {
               senderId: campaign.createdById,
               campaignId: campaign.id,
@@ -611,7 +616,7 @@ export const campaignService = {
       const taskId = await bulkNotificationService.enqueueBulkEmailNotification(
         `${campaign.name} - Новини`,
         `<h1>${campaign.name}</h1><p>Шановні користувачі, раді повідомити вас про останні новини.</p>`,
-        userFilter,
+        userFilter as any,
         {
           templateName: 'newsletter_template',
           templateVariables: {

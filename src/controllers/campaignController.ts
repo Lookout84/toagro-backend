@@ -263,7 +263,6 @@ export const campaignController = {
   },
 
   /**
-   /**
    * Скасування кампанії
    */
   async cancelCampaign(req: Request, res: Response, next: NextFunction) {
@@ -404,13 +403,14 @@ export const campaignController = {
       }
       
       // Створюємо нову кампанію на основі існуючої
+      // Виправлено: додано перевірки на null і конвертацію в правильні типи
       const campaign = await campaignService.createCampaign({
         name: `Копія: ${originalCampaign.name}`,
-        description: originalCampaign.description,
+        description: originalCampaign.description || undefined,
         type: originalCampaign.type as CampaignType,
         targetAudience: originalCampaign.targetAudience,
-        goal: originalCampaign.goal,
-        budget: originalCampaign.budget,
+        goal: originalCampaign.goal || undefined,
+        budget: originalCampaign.budget !== null ? originalCampaign.budget : undefined,
         createdById,
       });
       
