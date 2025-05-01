@@ -547,16 +547,16 @@ export const campaignService = {
 
       switch (notificationType) {
         case NotificationType.EMAIL:
-          taskId = await bulkNotificationService.enqueueBulkEmailNotification(
-            subject!,
-            content,
-            userFilter as any,
-            {
-              senderId: campaign.createdById,
-              campaignId: campaign.id,
-              priority: NotificationPriority.NORMAL,
-            }
-          );
+            taskId = await bulkNotificationService.enqueueBulkEmailNotification(
+                subject!,
+                content,
+                campaign.createdById,
+                {
+                  senderId: campaign.createdById,
+                  campaignId: campaign.id,
+                  priority: NotificationPriority.NORMAL,
+                }
+              );
           break;
         case NotificationType.SMS:
           taskId = await bulkNotificationService.enqueueBulkSmsNotification(

@@ -77,6 +77,13 @@ interface UserNotificationData {
   phoneNumber?: string | null;
 }
 
+interface SendOptions {
+  templateName?: string;
+  templateVariables?: Record<string, string>;
+  senderId?: number;
+  campaignId?: number;
+  priority?: NotificationPriority;
+}
 /**
  * Service for managing bulk notification tasks
  */
