@@ -547,39 +547,46 @@ export const campaignService = {
 
       switch (notificationType) {
         case NotificationType.EMAIL:
-            taskId = await bulkNotificationService.enqueueBulkEmailNotification(
+            taskId =await bulkNotificationService.enqueueBulkEmailNotification(
                 subject!,
                 content,
-                campaign.createdById,
+                typeof userFilter === 'number' ? userFilter : 0, // Ensure userFilter is a number
                 {
-                  senderId: campaign.createdById,
-                  campaignId: campaign.id,
-                  priority: NotificationPriority.NORMAL,
+                  },
+                  {
+                    senderId: campaign.createdById,
+                    campaignId: campaign.id,
+                    priority: NotificationPriority.NORMAL,
                 }
               );
           break;
         case NotificationType.SMS:
-          taskId = await bulkNotificationService.enqueueBulkSmsNotification(
-            content,
-            userFilter as any,
-            {
-              senderId: campaign.createdById,
-              campaignId: campaign.id,
-              priority: NotificationPriority.NORMAL,
-            }
-          );
-          break;
-        case NotificationType.PUSH:
-          taskId = await bulkNotificationService.enqueueBulkPushNotification(
+          taskId = await bulkNotificationService.enqueueBulkEmailNotification(
             subject!,
             content,
-            userFilter as any,
-            {
-              senderId: campaign.createdById,
-              campaignId: campaign.id,
-              priority: NotificationPriority.NORMAL,
-            }
-          );
+            typeof userFilter === 'number' ? userFilter : 0, // Ensure userFilter is a number
+                {
+                  },
+                  {
+                    senderId: campaign.createdById,
+                    campaignId: campaign.id,
+                    priority: NotificationPriority.NORMAL,
+                }
+              );
+          break;
+        case NotificationType.PUSH:
+          taskId = await bulkNotificationService.enqueueBulkEmailNotification(
+            subject!,
+            content,
+            typeof userFilter === 'number' ? userFilter : 0, // Ensure userFilter is a number
+                {
+                  },
+                  {
+                    senderId: campaign.createdById,
+                    campaignId: campaign.id,
+                    priority: NotificationPriority.NORMAL,
+                }
+              );
           break;
       }
 
@@ -618,11 +625,13 @@ export const campaignService = {
         `<h1>${campaign.name}</h1><p>Шановні користувачі, раді повідомити вас про останні новини.</p>`,
         userFilter as any,
         {
-          templateName: 'newsletter_template',
-          templateVariables: {
-            campaignName: campaign.name,
-            date: new Date().toLocaleDateString()
           },
+          {
+            templateVariables: {
+              campaignName: campaign.name,
+              date: new Date().toLocaleDateString(),
+              templateName: 'newsletter_template',
+            },
           senderId: campaign.createdById,
           campaignId: campaign.id,
           priority: NotificationPriority.NORMAL,

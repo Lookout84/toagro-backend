@@ -178,7 +178,7 @@ class BulkNotificationService {
     subject: string,
     content: string,
     createdById: number,
-    userFilter?: UserFilter,
+    userFilter?: UserFilter | number,
     options: {
       templateName?: string;
       templateVariables?: Record<string, string>;
@@ -187,13 +187,14 @@ class BulkNotificationService {
       priority?: NotificationPriority;
     } = {}
   ): Promise<string> {
+    const filter = typeof userFilter === 'number' ? { createdById: userFilter } : userFilter;
     return this.enqueueBulkNotification(
       NotificationType.EMAIL,
       content,
       createdById,
       {
         subject,
-        userFilter,
+        userFilter: filter as UserFilter,
         ...options,
       }
     );
