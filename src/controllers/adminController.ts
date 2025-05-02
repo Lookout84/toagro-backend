@@ -73,20 +73,20 @@
 //       const limitNum = parseInt(limit as string);
 //       const skip = (pageNum - 1) * limitNum;
 
-//       const where: Prisma.UserWhereInput = search 
+//       const where: Prisma.UserWhereInput = search
 //         ? {
 //             OR: [
-//               { 
-//                 name: { 
-//                   contains: search as string, 
-//                   mode: 'insensitive' as Prisma.QueryMode 
-//                 } 
+//               {
+//                 name: {
+//                   contains: search as string,
+//                   mode: 'insensitive' as Prisma.QueryMode
+//                 }
 //               },
-//               { 
-//                 email: { 
-//                   contains: search as string, 
-//                   mode: 'insensitive' as Prisma.QueryMode 
-//                 } 
+//               {
+//                 email: {
+//                   contains: search as string,
+//                   mode: 'insensitive' as Prisma.QueryMode
+//                 }
 //               }
 //             ]
 //           }
@@ -273,6 +273,77 @@ import { prisma } from '../config/db';
 import { logger } from '../utils/logger';
 
 export const adminController = {
+  /**
+   * @swagger
+   * /api/admin/dashboard:
+   *   get:
+   *     tags:
+   *       - Admin
+   *     summary: Отримання статистики для панелі адміністратора
+   *     description: Повертає загальну статистику для адміністративної панелі
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Успішне отримання статистики
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 status:
+   *                   type: string
+   *                   example: success
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     stats:
+   *                       type: object
+   *                       properties:
+   *                         userCount:
+   *                           type: integer
+   *                           example: 1250
+   *                         listingCount:
+   *                           type: integer
+   *                           example: 3450
+   *                         activeListingCount:
+   *                           type: integer
+   *                           example: 2800
+   *                         messageCount:
+   *                           type: integer
+   *                           example: 15240
+   *                         paymentCount:
+   *                           type: integer
+   *                           example: 820
+   *                         totalRevenue:
+   *                           type: number
+   *                           example: 542600
+   *                     charts:
+   *                       type: object
+   *                       properties:
+   *                         userRegistrations:
+   *                           type: array
+   *                           items:
+   *                             type: object
+   *                             properties:
+   *                               date:
+   *                                 type: string
+   *                                 example: '2023-04-01'
+   *                               count:
+   *                                 type: integer
+   *                                 example: 25
+   *       401:
+   *         description: Користувач не автентифікований
+   *         content:
+   *           application/json:
+   *               $ref: '#/definitions/Error'
+   *       403:
+   *         description: Доступ заборонено, потрібні права адміністратора
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/definitions/Error'
+   */
   async getDashboardStats(req: Request, res: Response, next: NextFunction) {
     try {
       const [
@@ -281,7 +352,7 @@ export const adminController = {
         activeListingCount,
         messageCount,
         paymentCount,
-        totalRevenue
+        totalRevenue,
       ] = await Promise.all([
         prisma.user.count(),
         prisma.listing.count(),
@@ -290,8 +361,8 @@ export const adminController = {
         prisma.payment.count({ where: { status: 'COMPLETED' } }),
         prisma.payment.aggregate({
           _sum: { amount: true },
-          where: { status: 'COMPLETED' }
-        })
+          where: { status: 'COMPLETED' },
+        }),
       ]);
 
       const thirtyDaysAgo = new Date();
@@ -302,14 +373,14 @@ export const adminController = {
         _count: { id: true },
         where: {
           createdAt: {
-            gte: thirtyDaysAgo
-          }
-        }
+            gte: thirtyDaysAgo,
+          },
+        },
       });
 
-      const formattedRegistrations = userRegistrations.map(item => ({
+      const formattedRegistrations = userRegistrations.map((item) => ({
         date: item.createdAt.toISOString().split('T')[0],
-        count: item._count.id
+        count: item._count.id,
       }));
 
       res.status(200).json({
@@ -321,18 +392,120 @@ export const adminController = {
             activeListingCount,
             messageCount,
             paymentCount,
-            totalRevenue: totalRevenue._sum.amount || 0
+            totalRevenue: totalRevenue._sum.amount || 0,
           },
           charts: {
-            userRegistrations: formattedRegistrations
-          }
-        }
+            userRegistrations: formattedRegistrations,
+          },
+        },
       });
     } catch (error) {
       next(error);
     }
   },
-
+  /**
+   * @swagger
+   * /api/admin/users:
+   *   get:
+   *     tags:
+   *       - Admin
+   *     summary: Отримання списку користувачів
+   *     description: Повертає список всіх користувачів з пагінацією
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: page
+   *         schema:
+   *           type: integer
+   *           default: 1
+   *         description: Номер сторінки для пагінації
+   *       - in: query
+   *         name: limit
+   *         schema:
+   *           type: integer
+   *           default: 10
+   *         description: Кількість елементів на сторінці
+   *       - in: query
+   *         name: search
+   *         schema:
+   *           type: string
+   *         description: Пошук за іменем або електронною поштою
+   *     responses:
+   *       200:
+   *         description: Успішне отримання списку користувачів
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 status:
+   *                   type: string
+   *                   example: success
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     users:
+   *                       type: array
+   *                       items:
+   *                         type: object
+   *                         properties:
+   *                           id:
+   *                             type: integer
+   *                             example: 1
+   *                           email:
+   *                             type: string
+   *                             example: user@example.com
+   *                           name:
+   *                             type: string
+   *                             example: Тестовий Користувач
+   *                           phoneNumber:
+   *                             type: string
+   *                             example: +380501234567
+   *                           role:
+   *                             type: string
+   *                             example: USER
+   *                           isVerified:
+   *                             type: boolean
+   *                             example: true
+   *                           createdAt:
+   *                             type: string
+   *                             format: date-time
+   *                             example: '2023-01-01T12:00:00Z'
+   *                           _count:
+   *                             type: object
+   *                             properties:
+   *                               listings:
+   *                                 type: integer
+   *                                 example: 5
+   *                     meta:
+   *                       type: object
+   *                       properties:
+   *                         total:
+   *                           type: integer
+   *                           example: 150
+   *                         page:
+   *                           type: integer
+   *                           example: 1
+   *                         limit:
+   *                           type: integer
+   *                           example: 10
+   *                         pages:
+   *                           type: integer
+   *                           example: 15
+   *       401:
+   *         description: Користувач не автентифікований
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/definitions/Error'
+   *       403:
+   *         description: Доступ заборонено, потрібні права адміністратора
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/definitions/Error'
+   */
   async getAllUsers(req: Request, res: Response, next: NextFunction) {
     try {
       const { page = '1', limit = '10', search } = req.query;
@@ -343,19 +516,19 @@ export const adminController = {
       const where: Prisma.UserWhereInput = search
         ? {
             OR: [
-              { 
-                name: { 
-                  contains: search as string, 
-                  mode: 'insensitive' as Prisma.QueryMode 
-                } 
+              {
+                name: {
+                  contains: search as string,
+                  mode: 'insensitive' as Prisma.QueryMode,
+                },
               },
-              { 
-                email: { 
-                  contains: search as string, 
-                  mode: 'insensitive' as Prisma.QueryMode 
-                } 
-              }
-            ]
+              {
+                email: {
+                  contains: search as string,
+                  mode: 'insensitive' as Prisma.QueryMode,
+                },
+              },
+            ],
           }
         : {};
 
@@ -374,13 +547,13 @@ export const adminController = {
             createdAt: true,
             _count: {
               select: {
-                listings: true
-              }
-            }
+                listings: true,
+              },
+            },
           },
-          orderBy: { createdAt: 'desc' }
+          orderBy: { createdAt: 'desc' },
         }),
-        prisma.user.count({ where })
+        prisma.user.count({ where }),
       ]);
 
       res.status(200).json({
@@ -391,9 +564,9 @@ export const adminController = {
             total,
             page: pageNum,
             limit: limitNum,
-            pages: Math.ceil(total / limitNum)
-          }
-        }
+            pages: Math.ceil(total / limitNum),
+          },
+        },
       });
     } catch (error) {
       next(error);
@@ -408,7 +581,7 @@ export const adminController = {
       if (!Object.values(UserRole).includes(role)) {
         return res.status(400).json({
           status: 'error',
-          message: 'Invalid user role'
+          message: 'Invalid user role',
         });
       }
 
@@ -419,14 +592,14 @@ export const adminController = {
           id: true,
           email: true,
           name: true,
-          role: true
-        }
+          role: true,
+        },
       });
 
       res.status(200).json({
         status: 'success',
         message: 'User role updated successfully',
-        data: { user }
+        data: { user },
       });
     } catch (error) {
       next(error);
@@ -450,18 +623,18 @@ export const adminController = {
 
       if (search) {
         where.OR = [
-          { 
-            title: { 
-              contains: search as string, 
-              mode: 'insensitive' as Prisma.QueryMode 
-            } 
+          {
+            title: {
+              contains: search as string,
+              mode: 'insensitive' as Prisma.QueryMode,
+            },
           },
-          { 
-            description: { 
-              contains: search as string, 
-              mode: 'insensitive' as Prisma.QueryMode 
-            } 
-          }
+          {
+            description: {
+              contains: search as string,
+              mode: 'insensitive' as Prisma.QueryMode,
+            },
+          },
         ];
       }
 
@@ -475,13 +648,13 @@ export const adminController = {
               select: {
                 id: true,
                 name: true,
-                email: true
-              }
-            }
+                email: true,
+              },
+            },
           },
-          orderBy: { createdAt: 'desc' }
+          orderBy: { createdAt: 'desc' },
         }),
-        prisma.listing.count({ where })
+        prisma.listing.count({ where }),
       ]);
 
       res.status(200).json({
@@ -492,9 +665,9 @@ export const adminController = {
             total,
             page: pageNum,
             limit: limitNum,
-            pages: Math.ceil(total / limitNum)
-          }
-        }
+            pages: Math.ceil(total / limitNum),
+          },
+        },
       });
     } catch (error) {
       next(error);
@@ -504,20 +677,20 @@ export const adminController = {
   async getAllCategories(req: Request, res: Response, next: NextFunction) {
     try {
       const { active, search } = req.query;
-      
+
       let where: any = {};
-      
+
       if (active !== undefined) {
         where.active = active === 'true';
       }
-      
+
       if (search) {
         where.OR = [
           { name: { contains: search as string, mode: 'insensitive' } },
           { description: { contains: search as string, mode: 'insensitive' } },
         ];
       }
-      
+
       const categories = await prisma.category.findMany({
         where,
         include: {
@@ -538,7 +711,7 @@ export const adminController = {
           name: 'asc',
         },
       });
-      
+
       res.status(200).json({
         status: 'success',
         data: {
@@ -559,7 +732,10 @@ export const adminController = {
 
       const where: Prisma.PaymentWhereInput = {};
 
-      if (status && Object.values(PaymentStatus).includes(status as PaymentStatus)) {
+      if (
+        status &&
+        Object.values(PaymentStatus).includes(status as PaymentStatus)
+      ) {
         where.status = status as PaymentStatus;
       }
 
@@ -573,13 +749,13 @@ export const adminController = {
               select: {
                 id: true,
                 name: true,
-                email: true
-              }
-            }
+                email: true,
+              },
+            },
           },
-          orderBy: { createdAt: 'desc' }
+          orderBy: { createdAt: 'desc' },
         }),
-        prisma.payment.count({ where })
+        prisma.payment.count({ where }),
       ]);
 
       res.status(200).json({
@@ -590,12 +766,12 @@ export const adminController = {
             total,
             page: pageNum,
             limit: limitNum,
-            pages: Math.ceil(total / limitNum)
-          }
-        }
+            pages: Math.ceil(total / limitNum),
+          },
+        },
       });
     } catch (error) {
       next(error);
     }
-  }
+  },
 };

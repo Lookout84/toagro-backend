@@ -3,6 +3,54 @@ import { listingService } from '../services/listingService';
 import { logger } from '../utils/logger';
 
 export const listingController = {
+  /**
+ * @swagger
+ * /api/listings:
+ *   post:
+ *     tags:
+ *       - Listings
+ *     summary: Створення нового оголошення
+ *     description: Створює нове оголошення для автентифікованого користувача
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/definitions/CreateListingRequest'
+ *     responses:
+ *       201:
+ *         description: Оголошення успішно створено
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 message:
+ *                   type: string
+ *                   example: Оголошення успішно створено
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     listing:
+ *                       $ref: '#/definitions/Listing'
+ *       400:
+ *         description: Помилка валідації даних
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/definitions/Error'
+ *       401:
+ *         description: Користувач не автентифікований
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/definitions/Error'
+ */
   async createListing(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.userId!;

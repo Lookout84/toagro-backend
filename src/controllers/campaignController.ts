@@ -7,6 +7,85 @@ export const campaignController = {
   /**
    * Створення нової кампанії
    */
+  /**
+ * @swagger
+ * /api/campaigns:
+ *   post:
+ *     tags:
+ *       - Campaigns
+ *     summary: Створення нової кампанії
+ *     description: Створює нову маркетингову кампанію
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - type
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: Весняна кампанія 2025
+ *               description:
+ *                 type: string
+ *                 example: Кампанія для залучення фермерів навесні
+ *               type:
+ *                 type: string
+ *                 enum: [EMAIL, SMS, PUSH, MIXED, PROMO, EVENT, NEWSLETTER]
+ *                 example: EMAIL
+ *               startDate:
+ *                 type: string
+ *                 format: date-time
+ *                 example: '2025-03-01T00:00:00Z'
+ *               endDate:
+ *                 type: string
+ *                 format: date-time
+ *                 example: '2025-04-01T23:59:59Z'
+ *               targetAudience:
+ *                 type: object
+ *                 example: {"role": "USER", "isVerified": true}
+ *               goal:
+ *                 type: string
+ *                 example: Збільшення продажів насіння
+ *               budget:
+ *                 type: number
+ *                 example: 10000
+ *     responses:
+ *       201:
+ *         description: Кампанію успішно створено
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 message:
+ *                   type: string
+ *                   example: Кампанію успішно створено
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     campaign:
+ *                       $ref: '#/definitions/Campaign'
+ *       400:
+ *         description: Помилка валідації даних
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/definitions/Error'
+ *       401:
+ *         description: Користувач не автентифікований
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/definitions/Error'
+ */
   async createCampaign(req: Request, res: Response, next: NextFunction) {
     try {
       const {
@@ -140,6 +219,86 @@ export const campaignController = {
   /**
    * Отримання списку кампаній
    */
+  /**
+ * @swagger
+ * /api/campaigns:
+ *   get:
+ *     tags:
+ *       - Campaigns
+ *     summary: Отримання списку кампаній
+ *     description: Повертає список кампаній з можливістю фільтрації та пагінацією
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [DRAFT, SCHEDULED, ACTIVE, PAUSED, COMPLETED, CANCELLED]
+ *         description: Фільтр за статусом кампанії
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [EMAIL, SMS, PUSH, MIXED, PROMO, EVENT, NEWSLETTER]
+ *         description: Фільтр за типом кампанії
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Пошук за назвою або описом
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Номер сторінки для пагінації
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Кількість елементів на сторінці
+ *     responses:
+ *       200:
+ *         description: Успішне отримання списку кампаній
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     campaigns:
+ *                       type: array
+ *                       items:
+ *                         $ref: '#/definitions/Campaign'
+ *                     meta:
+ *                       type: object
+ *                       properties:
+ *                         total:
+ *                           type: integer
+ *                           example: 50
+ *                         page:
+ *                           type: integer
+ *                           example: 1
+ *                         limit:
+ *                           type: integer
+ *                           example: 10
+ *                         pages:
+ *                           type: integer
+ *                           example: 5
+ *       401:
+ *         description: Користувач не автентифікований
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/definitions/Error'
+ */
   async getCampaigns(req: Request, res: Response, next: NextFunction) {
     try {
       const {

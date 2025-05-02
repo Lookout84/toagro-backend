@@ -11,6 +11,43 @@ export const notificationController = {
   /**
    * Відправка тестового email
    */
+  /**
+ * @swagger
+ * /api/notifications/test-email:
+ *   post:
+ *     tags:
+ *       - Notifications
+ *     summary: Відправка тестового email
+ *     description: Відправляє тестовий email автентифікованому користувачу
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Тестовий email успішно відправлено
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 message:
+ *                   type: string
+ *                   example: Тестовий email успішно відправлено
+ *       401:
+ *         description: Користувач не автентифікований
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/definitions/Error'
+ *       404:
+ *         description: Користувача не знайдено або відсутня електронна пошта
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/definitions/Error'
+ */
   async sendTestEmail(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.userId!;
@@ -252,6 +289,69 @@ export const notificationController = {
   /**
    * Отримання історії сповіщень
    */
+  /**
+ * @swagger
+ * /api/notifications/history:
+ *   get:
+ *     tags:
+ *       - Notifications
+ *     summary: Отримання історії сповіщень
+ *     description: Повертає історію сповіщень автентифікованого користувача
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Номер сторінки для пагінації
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Кількість елементів на сторінці
+ *     responses:
+ *       200:
+ *         description: Успішне отримання історії сповіщень
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     notifications:
+ *                       type: array
+ *                       items:
+ *                         $ref: '#/definitions/Notification'
+ *                     meta:
+ *                       type: object
+ *                       properties:
+ *                         page:
+ *                           type: integer
+ *                           example: 1
+ *                         limit:
+ *                           type: integer
+ *                           example: 10
+ *                         total:
+ *                           type: integer
+ *                           example: 50
+ *                         totalPages:
+ *                           type: integer
+ *                           example: 5
+ *       401:
+ *         description: Користувач не автентифікований
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/definitions/Error'
+ */
   async getNotificationHistory(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.userId!;

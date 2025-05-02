@@ -3,6 +3,49 @@ import { categoryService } from '../services/categoryService';
 import { logger } from '../utils/logger';
 
 export const categoryController = {
+  /**
+ * @swagger
+ * /api/categories:
+ *   get:
+ *     tags:
+ *       - Categories
+ *     summary: Отримання списку категорій
+ *     description: Повертає список категорій з можливістю фільтрації
+ *     parameters:
+ *       - in: query
+ *         name: active
+ *         schema:
+ *           type: boolean
+ *         description: Фільтр за активними категоріями
+ *       - in: query
+ *         name: parentId
+ *         schema:
+ *           type: integer
+ *         description: Фільтр за батьківською категорією
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Пошук за назвою або описом
+ *     responses:
+ *       200:
+ *         description: Успішне отримання списку категорій
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     categories:
+ *                       type: array
+ *                       items:
+ *                         $ref: '#/definitions/Category'
+ */
   async createCategory(req: Request, res: Response, next: NextFunction) {
     try {
       const { name, slug, description, image, parentId, active } = req.body;

@@ -9,170 +9,170 @@ datasource db {
 
 // Модель для сповіщень
 model Notification {
-  id               Int                 @id @default(autoincrement())
-  userId           Int
-  type             NotificationType
-  subject          String?
-  content          String
-  attachments      Json?
-  read             Boolean             @default(false)
-  readAt           DateTime?
-  priority         NotificationPriority @default(NORMAL)
-  metadata         Json?
-  linkUrl          String?
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
-  user             User                @relation(fields: [userId], references: [id])
+  id          Int                  @id @default(autoincrement())
+  userId      Int
+  type        NotificationType
+  subject     String?
+  content     String
+  attachments Json?
+  read        Boolean              @default(false)
+  readAt      DateTime?
+  priority    NotificationPriority @default(NORMAL)
+  metadata    Json?
+  linkUrl     String?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  user        User                 @relation(fields: [userId], references: [id])
 }
 
 // Модель для шаблонів сповіщень
 model NotificationTemplate {
-  id           Int            @id @default(autoincrement())
-  name         String         @unique
-  type         NotificationType
-  subject      String?
-  content      String
-  variables    String[]
-  active       Boolean        @default(true)
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  createdById  Int
-  createdBy    User           @relation(fields: [createdById], references: [id])
+  id          Int              @id @default(autoincrement())
+  name        String           @unique
+  type        NotificationType
+  subject     String?
+  content     String
+  variables   String[]
+  active      Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  createdById Int
+  createdBy   User             @relation(fields: [createdById], references: [id])
 }
 
 // Модель для налаштувань сповіщень користувачів
 model NotificationSetting {
-  id                    Int      @id @default(autoincrement())
-  userId                Int      @unique
-  emailEnabled          Boolean  @default(true)
-  smsEnabled            Boolean  @default(false)
-  pushEnabled           Boolean  @default(true)
-  newsletterSubscribed  Boolean  @default(true)
-  marketingSubscribed   Boolean  @default(false)
+  id                     Int      @id @default(autoincrement())
+  userId                 Int      @unique
+  emailEnabled           Boolean  @default(true)
+  smsEnabled             Boolean  @default(false)
+  pushEnabled            Boolean  @default(true)
+  newsletterSubscribed   Boolean  @default(true)
+  marketingSubscribed    Boolean  @default(false)
   newListingNotification Boolean  @default(true)
   newMessageNotification Boolean  @default(true)
-  paymentNotification   Boolean  @default(true)
-  systemNotification    Boolean  @default(true)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-  user                  User     @relation(fields: [userId], references: [id])
+  paymentNotification    Boolean  @default(true)
+  systemNotification     Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  user                   User     @relation(fields: [userId], references: [id])
 }
 
 // Модель для токенів пристроїв (Push-сповіщення)
 model DeviceToken {
-  id        Int       @id @default(autoincrement())
-  userId    Int
-  token     String    @unique
-  deviceType String    // "android", "ios", "web"
-  name      String?
-  lastUsed  DateTime  @default(now())
-  createdAt DateTime  @default(now())
-  user      User      @relation(fields: [userId], references: [id])
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  token      String   @unique
+  deviceType String // "android", "ios", "web"
+  name       String?
+  lastUsed   DateTime @default(now())
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id])
 }
 
 // Модель для планових завдань
 model ScheduledTask {
-  id             String           @id
-  type           String
-  data           Json
-  scheduledFor   DateTime
-  status         ScheduledTaskStatus @default(PENDING)
-  attempts       Int              @default(0)
-  maxAttempts    Int              @default(3)
-  lastAttemptAt  DateTime?
-  completedAt    DateTime?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  createdById    Int?
-  createdBy      User?            @relation(fields: [createdById], references: [id])
+  id            String              @id
+  type          String
+  data          Json
+  scheduledFor  DateTime
+  status        ScheduledTaskStatus @default(PENDING)
+  attempts      Int                 @default(0)
+  maxAttempts   Int                 @default(3)
+  lastAttemptAt DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  createdById   Int?
+  createdBy     User?               @relation(fields: [createdById], references: [id])
 }
 
 // Модель для регулярних завдань
 model RecurringTask {
-  id             String           @id
-  type           String
-  data           Json
-  schedule       String           // Cron-вираз
-  status         ScheduledTaskStatus @default(ACTIVE)
-  lastRunAt      DateTime?
-  nextRunAt      DateTime?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  createdById    Int?
-  createdBy      User?            @relation(fields: [createdById], references: [id])
+  id          String              @id
+  type        String
+  data        Json
+  schedule    String // Cron-вираз
+  status      ScheduledTaskStatus @default(ACTIVE)
+  lastRunAt   DateTime?
+  nextRunAt   DateTime?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  createdById Int?
+  createdBy   User?               @relation(fields: [createdById], references: [id])
 }
 
 // Модель для масових розсилок
 model BulkNotification {
-  id             String                 @id
-  type           NotificationType
-  subject        String?
-  content        String
-  userFilter     Json?
-  templateName   String?
-  totalSent      Int                    @default(0)
-  totalFailed    Int                    @default(0)
-  status         BulkNotificationStatus @default(PENDING)
-  startedAt      DateTime?
-  completedAt    DateTime?
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
-  createdById    Int
-  createdBy      User                   @relation(fields: [createdById], references: [id])
-  senderId       Int?
-  sender         User?                  @relation("SenderNotifications", fields: [senderId], references: [id])
-  campaignId     Int?
-  campaign       Campaign?              @relation(fields: [campaignId], references: [id])
-  priority       String?                @default("NORMAL") // Використовуємо String бо NotificationPriority, можливо, не enum в Prisma
+  id           String                 @id
+  type         NotificationType
+  subject      String?
+  content      String
+  userFilter   Json?
+  templateName String?
+  totalSent    Int                    @default(0)
+  totalFailed  Int                    @default(0)
+  status       BulkNotificationStatus @default(PENDING)
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  createdById  Int
+  createdBy    User                   @relation(fields: [createdById], references: [id])
+  senderId     Int?
+  sender       User?                  @relation("SenderNotifications", fields: [senderId], references: [id])
+  campaignId   Int?
+  campaign     Campaign?              @relation(fields: [campaignId], references: [id])
+  priority     String?                @default("NORMAL") // Використовуємо String бо NotificationPriority, можливо, не enum в Prisma
 }
 
 model Campaign {
-  id                Int               @id @default(autoincrement())
+  id                Int                @id @default(autoincrement())
   name              String
   description       String?
   type              CampaignType
-  status            CampaignStatus    @default(DRAFT)
+  status            CampaignStatus     @default(DRAFT)
   startDate         DateTime?
   endDate           DateTime?
-  targetAudience    Json?             // Фільтр цільової аудиторії
+  targetAudience    Json? // Фільтр цільової аудиторії
   goal              String?
   budget            Float?
-  performance       Json?             // Статистика ефективності
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  performance       Json? // Статистика ефективності
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
   createdById       Int
-  createdBy         User              @relation(fields: [createdById], references: [id])
+  createdBy         User               @relation(fields: [createdById], references: [id])
   bulkNotifications BulkNotification[]
 }
 
 model User {
-  id             Int         @id @default(autoincrement())
-  email          String      @unique
-  passwordHash   String
-  name           String
-  phoneNumber    String?     @unique
-  role           UserRole    @default(USER)
-  avatar         String?
-  isVerified     Boolean     @default(false)
-  verificationToken String?
-  resetToken     String?
-  lastLoginAt     DateTime?
-  resetTokenExpiry DateTime?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
-  listings       Listing[]
-  sentMessages   Message[]   @relation("SentMessages")
-  receivedMessages Message[] @relation("ReceivedMessages")
-  payments       Payment[]
-  notifications      Notification[]
+  id                  Int                    @id @default(autoincrement())
+  email               String                 @unique
+  passwordHash        String
+  name                String
+  phoneNumber         String?                @unique
+  role                UserRole               @default(USER)
+  avatar              String?
+  isVerified          Boolean                @default(false)
+  verificationToken   String?
+  resetToken          String?
+  lastLoginAt         DateTime?
+  resetTokenExpiry    DateTime?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  listings            Listing[]
+  sentMessages        Message[]              @relation("SentMessages")
+  receivedMessages    Message[]              @relation("ReceivedMessages")
+  payments            Payment[]
+  notifications       Notification[]
   notificationSetting NotificationSetting?
-  deviceTokens       DeviceToken[]
-  createdTemplates   NotificationTemplate[]
-  scheduledTasks     ScheduledTask[]
-  recurringTasks     RecurringTask[]
-  bulkNotifications      BulkNotification[] @relation()
-  sentNotifications      BulkNotification[] @relation("SenderNotifications")
-  createdCampaigns Campaign[]
+  deviceTokens        DeviceToken[]
+  createdTemplates    NotificationTemplate[]
+  scheduledTasks      ScheduledTask[]
+  recurringTasks      RecurringTask[]
+  bulkNotifications   BulkNotification[]     @relation()
+  sentNotifications   BulkNotification[]     @relation("SenderNotifications")
+  createdCampaigns    Campaign[]
 }
 
 enum UserRole {
@@ -186,8 +186,8 @@ model Listing {
   description String
   price       Float
   location    String
-  category    String    // Залишимо поле для зворотної сумісності
-  categoryId  Int?      // Нове поле для зв'язку з моделлю Category
+  category    String // Залишимо поле для зворотної сумісності
+  categoryId  Int? // Нове поле для зв'язку з моделлю Category
   userId      Int
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -198,46 +198,45 @@ model Listing {
   categoryRel Category? @relation(fields: [categoryId], references: [id]) // Новий зв'язок
 }
 
-
 model Message {
-  id            Int       @id @default(autoincrement())
-  content       String
-  senderId      Int
-  receiverId    Int
-  listingId     Int?
-  createdAt     DateTime  @default(now())
-  readAt        DateTime?
-  sender        User      @relation("SentMessages", fields: [senderId], references: [id])
-  receiver      User      @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  id         Int       @id @default(autoincrement())
+  content    String
+  senderId   Int
+  receiverId Int
+  listingId  Int?
+  createdAt  DateTime  @default(now())
+  readAt     DateTime?
+  sender     User      @relation("SentMessages", fields: [senderId], references: [id])
+  receiver   User      @relation("ReceivedMessages", fields: [receiverId], references: [id])
 }
 
 model Payment {
-  id              Int           @id @default(autoincrement())
-  userId          Int
-  amount          Float
-  currency        String        @default("UAH")
-  status          PaymentStatus
-  transactionId   String        @unique
-  orderId         String?
-  paymentMethod   String?
-  createdAt       DateTime      @default(now())
-  completedAt     DateTime?
-  user            User          @relation(fields: [userId], references: [id])
+  id            Int           @id @default(autoincrement())
+  userId        Int
+  amount        Float
+  currency      String        @default("UAH")
+  status        PaymentStatus
+  transactionId String        @unique
+  orderId       String?
+  paymentMethod String?
+  createdAt     DateTime      @default(now())
+  completedAt   DateTime?
+  user          User          @relation(fields: [userId], references: [id])
 }
 
 // Додати після моделі Payment
 
 model Category {
-  id          Int       @id @default(autoincrement())
-  name        String    @unique
-  slug        String    @unique
+  id          Int        @id @default(autoincrement())
+  name        String     @unique
+  slug        String     @unique
   description String?
   image       String?
   parentId    Int?
-  active      Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  parent      Category? @relation("CategoryToCategory", fields: [parentId], references: [id])
+  active      Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  parent      Category?  @relation("CategoryToCategory", fields: [parentId], references: [id])
   children    Category[] @relation("CategoryToCategory")
   listings    Listing[]
 }

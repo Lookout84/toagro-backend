@@ -1,7 +1,10 @@
 import { rabbitmq } from '../utils/rabbitmq';
 import { logger } from '../utils/logger';
 import { prisma } from '../config/db';
-import { notificationService, NotificationPriority } from './notificationService';
+import {
+  notificationService,
+  NotificationPriority,
+} from './notificationService';
 import { NotificationType } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 import { Prisma } from '@prisma/client';
@@ -34,7 +37,7 @@ export const BulkNotificationStatus = {
   PROCESSING: 'PROCESSING',
   COMPLETED: 'COMPLETED',
   FAILED: 'FAILED',
-  CANCELLED: 'CANCELLED'
+  CANCELLED: 'CANCELLED',
 } as const;
 
 export type BulkNotificationStatusType = keyof typeof BulkNotificationStatus;
@@ -89,7 +92,7 @@ interface SendOptions {
  */
 class BulkNotificationService {
   private activeJobs: Map<string, BulkNotificationTask> = new Map();
-  
+
   /**
    * Initialize bulk notification queue
    */
@@ -123,7 +126,7 @@ class BulkNotificationService {
     try {
       const taskId = `bulk_${uuidv4()}`;
       const now = new Date();
-      
+
       const taskData: Prisma.BulkNotificationCreateInput = {
         id: taskId,
         type,
@@ -136,14 +139,30 @@ class BulkNotificationService {
         totalFailed: 0,
         createdAt: now,
         updatedAt: now,
-        createdBy: { connect: { id: createdById } },
-        sender: options.senderId ? { connect: { id: options.senderId } } : undefined,
-        campaign: options.campaignId ? { connect: { id: options.campaignId } } : undefined,
-        priority: options.priority || NotificationPriority.NORMAL,
+        createdBy: {
+          connect: { id: createdById },
+        },
+        ...(options.senderId
+          ? {
+              sender: {
+                connect: { id: options.senderId },
+              },
+            }
+          : {}),
+        ...(options.campaignId
+          ? {
+              campaign: {
+                connect: { id: options.campaignId },
+              },
+            }
+          : {}),
+        priority:
+          options.priority?.toString() ||
+          NotificationPriority.NORMAL.toString(),
       };
-  
+
       await prisma.bulkNotification.create({ data: taskData });
-  
+
       const task: BulkNotificationTask = {
         id: taskId,
         type,
@@ -162,7 +181,7 @@ class BulkNotificationService {
         priority: options.priority || NotificationPriority.NORMAL,
         templateVariables: options.templateVariables,
       };
-  
+
       await rabbitmq.sendToQueue(BULK_NOTIFICATION_QUEUE, task);
       return taskId;
     } catch (error) {
@@ -187,7 +206,8 @@ class BulkNotificationService {
       priority?: NotificationPriority;
     } = {}
   ): Promise<string> {
-    const filter = typeof userFilter === 'number' ? { createdById: userFilter } : userFilter;
+    const filter =
+      typeof userFilter === 'number' ? { createdById: userFilter } : userFilter;
     return this.enqueueBulkNotification(
       NotificationType.EMAIL,
       content,
@@ -255,55 +275,71 @@ class BulkNotificationService {
    */
   async startBulkNotificationWorker(): Promise<void> {
     try {
-      await rabbitmq.consumeQueue(BULK_NOTIFICATION_QUEUE, async (content: any) => {
-        const task = content as BulkNotificationTask;
-        try {
-          logger.info(`Starting bulk notification task processing: ${task.id}`);
-          
-          // Update task status in database
-          await this.updateTaskStatus(task.id, 'PROCESSING', { startedAt: new Date() });
-          
-          // Update local task object
-          task.status = 'PROCESSING';
-          task.startedAt = new Date();
-          this.activeJobs.set(task.id, task);
-          
-          // Get users by filter
-          const users = await this.getUsersByFilter(task.userFilter);
-          logger.info(`Found ${users.length} users for task ${task.id}`);
-          
-          if (users.length === 0) {
-            await this.completeTask(task.id, 0, 0);
-            return;
-          }
-          
-          // Process notifications in batches
-          let totalSuccess = 0;
-          let totalFailure = 0;
-          
-          for (let i = 0; i < users.length; i += BATCH_SIZE) {
-            const batch = users.slice(i, i + BATCH_SIZE);
-            const { successCount, failureCount } = await this.processBatch(task, batch);
-            
-            totalSuccess += successCount;
-            totalFailure += failureCount;
-            
-            // Update task counters in database
-            await this.updateTaskCounters(task.id, successCount, failureCount);
-            
-            // Add delay between batches to avoid overload
-            if (i + BATCH_SIZE < users.length) {
-              await new Promise(resolve => setTimeout(resolve, BATCH_INTERVAL));
+      await rabbitmq.consumeQueue(
+        BULK_NOTIFICATION_QUEUE,
+        async (content: any) => {
+          const task = content as BulkNotificationTask;
+          try {
+            logger.info(
+              `Starting bulk notification task processing: ${task.id}`
+            );
+
+            // Update task status in database
+            await this.updateTaskStatus(task.id, 'PROCESSING', {
+              startedAt: new Date(),
+            });
+
+            // Update local task object
+            task.status = 'PROCESSING';
+            task.startedAt = new Date();
+            this.activeJobs.set(task.id, task);
+
+            // Get users by filter
+            const users = await this.getUsersByFilter(task.userFilter);
+            logger.info(`Found ${users.length} users for task ${task.id}`);
+
+            if (users.length === 0) {
+              await this.completeTask(task.id, 0, 0);
+              return;
             }
+
+            // Process notifications in batches
+            let totalSuccess = 0;
+            let totalFailure = 0;
+
+            for (let i = 0; i < users.length; i += BATCH_SIZE) {
+              const batch = users.slice(i, i + BATCH_SIZE);
+              const { successCount, failureCount } = await this.processBatch(
+                task,
+                batch
+              );
+
+              totalSuccess += successCount;
+              totalFailure += failureCount;
+
+              // Update task counters in database
+              await this.updateTaskCounters(
+                task.id,
+                successCount,
+                failureCount
+              );
+
+              // Add delay between batches to avoid overload
+              if (i + BATCH_SIZE < users.length) {
+                await new Promise((resolve) =>
+                  setTimeout(resolve, BATCH_INTERVAL)
+                );
+              }
+            }
+
+            await this.completeTask(task.id, totalSuccess, totalFailure);
+          } catch (error) {
+            logger.error(`Error processing bulk notification task: ${error}`);
+            await this.failTask(task.id, error);
           }
-          
-          await this.completeTask(task.id, totalSuccess, totalFailure);
-        } catch (error) {
-          logger.error(`Error processing bulk notification task: ${error}`);
-          await this.failTask(task.id, error);
         }
-      });
-      
+      );
+
       logger.info('Bulk notification worker successfully started');
     } catch (error) {
       logger.error(`Error starting bulk notification worker: ${error}`);
@@ -315,8 +351,8 @@ class BulkNotificationService {
    * Update task status in database
    */
   private async updateTaskStatus(
-    taskId: string, 
-    status: BulkNotificationStatusType, 
+    taskId: string,
+    status: BulkNotificationStatusType,
     additionalData: Record<string, any> = {}
   ): Promise<void> {
     try {
@@ -325,8 +361,8 @@ class BulkNotificationService {
         data: {
           status,
           updatedAt: new Date(),
-          ...additionalData
-        }
+          ...additionalData,
+        },
       });
     } catch (error) {
       logger.error(`Failed to update task status for ${taskId}: ${error}`);
@@ -348,8 +384,8 @@ class BulkNotificationService {
         data: {
           totalSent: { increment: successIncrement },
           totalFailed: { increment: failureIncrement },
-          updatedAt: new Date()
-        }
+          updatedAt: new Date(),
+        },
       });
     } catch (error) {
       logger.error(`Failed to update task counters for ${taskId}: ${error}`);
@@ -360,7 +396,11 @@ class BulkNotificationService {
   /**
    * Mark task as successfully completed
    */
-  private async completeTask(taskId: string, successCount: number, failureCount: number): Promise<void> {
+  private async completeTask(
+    taskId: string,
+    successCount: number,
+    failureCount: number
+  ): Promise<void> {
     try {
       await prisma.bulkNotification.update({
         where: { id: taskId },
@@ -369,8 +409,8 @@ class BulkNotificationService {
           completedAt: new Date(),
           updatedAt: new Date(),
           totalSent: { increment: successCount },
-          totalFailed: { increment: failureCount }
-        }
+          totalFailed: { increment: failureCount },
+        },
       });
       this.activeJobs.delete(taskId);
       logger.info(`Task ${taskId} completed successfully`);
@@ -389,23 +429,25 @@ class BulkNotificationService {
         data: {
           status: 'FAILED',
           completedAt: new Date(),
-          updatedAt: new Date()
-        }
+          updatedAt: new Date(),
+        },
       });
       this.activeJobs.delete(taskId);
       logger.error(`Task ${taskId} failed: ${error}`);
     } catch (dbError) {
-      logger.error(`Failed to update failed task ${taskId} in database: ${dbError}`);
+      logger.error(
+        `Failed to update failed task ${taskId} in database: ${dbError}`
+      );
     }
   }
-  
+
   /**
    * Process batch of users
    */
   private async processBatch(
-    task: BulkNotificationTask, 
+    task: BulkNotificationTask,
     users: UserNotificationData[]
-  ): Promise<{ successCount: number, failureCount: number }> {
+  ): Promise<{ successCount: number; failureCount: number }> {
     let successCount = 0;
     let failureCount = 0;
 
@@ -426,17 +468,25 @@ class BulkNotificationService {
    * Process notification for a single user
    */
   private async processUserNotification(
-    task: BulkNotificationTask, 
+    task: BulkNotificationTask,
     user: UserNotificationData
   ): Promise<void> {
     // Prepare personalized content with template variables
     const variables = this.prepareTemplateVariables(task, user);
     const content = this.replaceTemplateVariables(task.content, variables);
-    const subject = task.subject ? this.replaceTemplateVariables(task.subject, variables) : '';
-    
+    const subject = task.subject
+      ? this.replaceTemplateVariables(task.subject, variables)
+      : '';
+
     switch (task.type) {
       case NotificationType.EMAIL:
-        await this.processEmailNotification(task, user, subject, content, variables);
+        await this.processEmailNotification(
+          task,
+          user,
+          subject,
+          content,
+          variables
+        );
         break;
       case NotificationType.SMS:
         await this.processSmsNotification(task, user, content);
@@ -453,14 +503,14 @@ class BulkNotificationService {
    * Prepare template variables for a user
    */
   private prepareTemplateVariables(
-    task: BulkNotificationTask, 
+    task: BulkNotificationTask,
     user: UserNotificationData
   ): Record<string, string> {
     return {
       name: user.name || 'user',
       email: user.email || '',
       id: user.id.toString(),
-      ...(task.templateVariables || {})
+      ...(task.templateVariables || {}),
     };
   }
 
@@ -468,7 +518,7 @@ class BulkNotificationService {
    * Replace template variables in text
    */
   private replaceTemplateVariables(
-    text: string, 
+    text: string,
     variables: Record<string, string>
   ): string {
     let result = text;
@@ -492,7 +542,7 @@ class BulkNotificationService {
     if (!user.email) {
       throw new Error(`User ${user.id} has no email address`);
     }
-    
+
     // Send notification
     if (task.templateName) {
       await notificationService.sendTemplateNotification(
@@ -526,7 +576,7 @@ class BulkNotificationService {
     if (!user.phoneNumber) {
       throw new Error(`User ${user.id} has no phone number`);
     }
-    
+
     await notificationService.sendSmsNotification(
       user.id,
       user.phoneNumber,
@@ -545,13 +595,13 @@ class BulkNotificationService {
     content: string
   ): Promise<void> {
     const deviceTokens = await this.getUserDeviceTokens(user.id);
-    
+
     if (deviceTokens.length === 0) {
       throw new Error(`User ${user.id} has no registered devices`);
     }
-    
+
     let successCount = 0;
-    
+
     for (const deviceToken of deviceTokens) {
       try {
         await notificationService.sendPushNotification(
@@ -564,12 +614,16 @@ class BulkNotificationService {
         );
         successCount++;
       } catch (error) {
-        logger.error(`Error sending push notification to device ${deviceToken}: ${error}`);
+        logger.error(
+          `Error sending push notification to device ${deviceToken}: ${error}`
+        );
       }
     }
-    
+
     if (successCount === 0) {
-      throw new Error(`Failed to send push notifications to all devices for user ${user.id}`);
+      throw new Error(
+        `Failed to send push notifications to all devices for user ${user.id}`
+      );
     }
   }
 
@@ -582,8 +636,8 @@ class BulkNotificationService {
         where: { userId },
         select: { token: true },
       });
-      
-      return userDevices.map(device => device.token);
+
+      return userDevices.map((device) => device.token);
     } catch (error) {
       logger.error(`Error getting device tokens for user ${userId}: ${error}`);
       return [];
@@ -593,7 +647,9 @@ class BulkNotificationService {
   /**
    * Get users by filter
    */
-  private async getUsersByFilter(filter?: UserFilter): Promise<UserNotificationData[]> {
+  private async getUsersByFilter(
+    filter?: UserFilter
+  ): Promise<UserNotificationData[]> {
     try {
       if (!filter) {
         // If no filter is specified, return all verified users
@@ -607,54 +663,58 @@ class BulkNotificationService {
           },
         });
       }
-      
+
       // Build filter conditions
       const where: Prisma.UserWhereInput = {};
-      
+
       if (filter.role) {
         where.role = filter.role as any; // Cast to any to handle the enum
       }
-      
+
       if (filter.isVerified !== undefined) {
         where.isVerified = filter.isVerified;
       }
-      
+
       if (filter.createdBefore || filter.createdAfter) {
         where.createdAt = {};
         if (filter.createdBefore) {
-          where.createdAt.lt = filter.createdBefore instanceof Date 
-            ? filter.createdBefore 
-            : new Date(filter.createdBefore);
+          where.createdAt.lt =
+            filter.createdBefore instanceof Date
+              ? filter.createdBefore
+              : new Date(filter.createdBefore);
         }
         if (filter.createdAfter) {
-          where.createdAt.gt = filter.createdAfter instanceof Date 
-            ? filter.createdAfter 
-            : new Date(filter.createdAfter);
+          where.createdAt.gt =
+            filter.createdAfter instanceof Date
+              ? filter.createdAfter
+              : new Date(filter.createdAfter);
         }
       }
-      
+
       if (filter.lastLoginBefore || filter.lastLoginAfter) {
         where.lastLoginAt = {};
         if (filter.lastLoginBefore) {
-          where.lastLoginAt.lt = filter.lastLoginBefore instanceof Date 
-            ? filter.lastLoginBefore 
-            : new Date(filter.lastLoginBefore);
+          where.lastLoginAt.lt =
+            filter.lastLoginBefore instanceof Date
+              ? filter.lastLoginBefore
+              : new Date(filter.lastLoginBefore);
         }
         if (filter.lastLoginAfter) {
-          where.lastLoginAt.gt = filter.lastLoginAfter instanceof Date 
-            ? filter.lastLoginAfter 
-            : new Date(filter.lastLoginAfter);
+          where.lastLoginAt.gt =
+            filter.lastLoginAfter instanceof Date
+              ? filter.lastLoginAfter
+              : new Date(filter.lastLoginAfter);
         }
       }
-      
+
       if (filter.hasListings !== undefined) {
         where.listings = filter.hasListings ? { some: {} } : { none: {} };
       }
-      
+
       if (filter.specificIds && filter.specificIds.length > 0) {
         where.id = { in: filter.specificIds };
       }
-      
+
       if (filter.categoryIds && filter.categoryIds.length > 0) {
         // Use correct Prisma relation field name based on schema
         // Check if it's UserCategory or similar in your schema
@@ -664,7 +724,7 @@ class BulkNotificationService {
           },
         };
       }
-      
+
       // Get filtered users
       return await prisma.user.findMany({
         where,
@@ -708,10 +768,10 @@ class BulkNotificationService {
           completedAt: activeTask.completedAt?.toISOString(),
           type: activeTask.type,
           subject: activeTask.subject || undefined,
-          createdById: activeTask.createdById
+          createdById: activeTask.createdById,
         };
       }
-    
+
       // Get task from database
       const task = await prisma.bulkNotification.findUnique({
         where: { id: taskId },
@@ -724,12 +784,12 @@ class BulkNotificationService {
           completedAt: true,
           type: true,
           subject: true,
-          createdById: true
-        }
+          createdById: true,
+        },
       });
-    
+
       if (!task) return null;
-    
+
       return {
         id: task.id,
         status: task.status as BulkNotificationStatusType,
@@ -739,7 +799,7 @@ class BulkNotificationService {
         completedAt: task.completedAt?.toISOString(),
         type: task.type,
         subject: task.subject || undefined,
-        createdById: task.createdById
+        createdById: task.createdById,
       };
     } catch (error) {
       logger.error(`Error getting task status for ${taskId}: ${error}`);
@@ -757,17 +817,17 @@ class BulkNotificationService {
       if (activeTask) {
         this.activeJobs.delete(taskId);
       }
-      
+
       // Update task status in database
       await prisma.bulkNotification.update({
         where: { id: taskId },
-        data: { 
+        data: {
           status: 'CANCELLED',
           completedAt: new Date(),
-          updatedAt: new Date()
+          updatedAt: new Date(),
         },
       });
-      
+
       logger.info(`Task ${taskId} cancelled successfully`);
       return true;
     } catch (error) {
@@ -788,14 +848,14 @@ class BulkNotificationService {
     totalFailed: number;
     createdById: number;
   }[] {
-    return Array.from(this.activeJobs.values()).map(task => ({
+    return Array.from(this.activeJobs.values()).map((task) => ({
       id: task.id,
       type: task.type,
       status: task.status,
       startedAt: task.startedAt?.toISOString(),
       totalSent: task.totalSent,
       totalFailed: task.totalFailed,
-      createdById: task.createdById
+      createdById: task.createdById,
     }));
   }
 }

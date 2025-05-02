@@ -3,6 +3,49 @@ import { userService } from '../services/userService';
 import { logger } from '../utils/logger';
 
 export const authController = {
+  /**
+ * @swagger
+ * /api/auth/register:
+ *   post:
+ *     tags:
+ *       - Auth
+ *     summary: Реєстрація нового користувача
+ *     description: Створює нового користувача з вказаними даними та повертає JWT токен
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/definitions/RegisterRequest'
+ *     responses:
+ *       201:
+ *         description: Користувача успішно зареєстровано
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 message:
+ *                   type: string
+ *                   example: Registration successful. Please verify your email.
+ *                 data:
+ *                   $ref: '#/definitions/AuthResponse'
+ *       400:
+ *         description: Помилка валідації даних
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/definitions/Error'
+ *       409:
+ *         description: Користувач з такою електронною поштою вже існує
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/definitions/Error'
+ */
   async register(req: Request, res: Response, next: NextFunction) {
     try {
       const { email, password, name, phoneNumber } = req.body;
@@ -22,7 +65,43 @@ export const authController = {
       next(error);
     }
   },
-
+/**
+ * @swagger
+ * /api/auth/login:
+ *   post:
+ *     tags:
+ *       - Auth
+ *     summary: Вхід користувача
+ *     description: Автентифікує користувача за електронною поштою та паролем
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/definitions/LoginRequest'
+ *     responses:
+ *       200:
+ *         description: Успішний вхід
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 message:
+ *                   type: string
+ *                   example: Login successful
+ *                 data:
+ *                   $ref: '#/definitions/AuthResponse'
+ *       401:
+ *         description: Невірні облікові дані
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/definitions/Error'
+ */
   async login(req: Request, res: Response, next: NextFunction) {
     try {
       const { email, password } = req.body;
@@ -138,3 +217,4 @@ export const authController = {
     }
   },
 };
+

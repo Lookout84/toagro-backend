@@ -174,8 +174,22 @@ const initializeServices = async () => {
     // Setup Swagger documentation
     if (config.nodeEnv !== 'production') {
       try {
-        const specs = swaggerJsdoc(swaggerOptions);
-        app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
+        const swaggerFile = require('./swagger-output.json');
+        const swaggerOptions = {
+          explorer: true,
+          customCss: '.swagger-ui .topbar { display: none }',
+          customSiteTitle: "ToAgro API Documentation"
+        };
+        
+        // Середовар для Swagger UI
+        app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerFile, swaggerOptions));
+        
+        // Кінцева точка для JSON-специфікації OpenAPI
+        app.get('/api-docs.json', (req, res) => {
+          res.setHeader('Content-Type', 'application/json');
+          res.send(swaggerFile);
+        });
+        
         logger.info(`Swagger docs available at http://localhost:${config.port}/api-docs`);
       } catch (error) {
         logger.error('Failed to setup Swagger:', error);
