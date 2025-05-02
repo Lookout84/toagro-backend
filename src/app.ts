@@ -132,14 +132,22 @@ const initializeSocketIO = () => {
 const initializeServices = async () => {
   try {
     // Connect to Redis
+    // try {
+    //   await redisClient.connect();
+    //   logger.info('Redis connected successfully');
+    // } catch (error) {
+    //   logger.error('Failed to connect to Redis:', error);
+    //   // Продовжуємо без Redis, якщо не вдалося підключитися
+    // }
     try {
-      await redisClient.connect();
-      logger.info('Redis connected successfully');
+      if (!redisClient.isOpen) {
+        // await redisClient.connect();
+        logger.info('Redis connected successfully');
+      }
     } catch (error) {
       logger.error('Failed to connect to Redis:', error);
       // Продовжуємо без Redis, якщо не вдалося підключитися
     }
-
     // Connect to RabbitMQ
     try {
       await rabbitmq.connect();
