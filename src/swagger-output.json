@@ -14,7 +14,7 @@
       "url": "https://opensource.org/licenses/ISC"
     }
   },
-  "host": "localhost:3000",
+  "host": "localhost:5000",
   "basePath": "/api",
   "tags": [
     {
