@@ -103,21 +103,43 @@ const prisma = new PrismaClient({
 
 // Налаштування логування
 const setupPrismaLogging = () => {
-  prisma.$on('query', (e) => {
+  interface QueryEvent {
+    query: string;
+    params: string;
+    duration: number;
+    target: string;
+  }
+
+  prisma.$on('query', (e: QueryEvent) => {
     logger.debug(`Prisma Query: ${e.query}`);
     logger.debug(`Params: ${e.params}`);
     logger.debug(`Duration: ${e.duration}ms`);
   });
 
-  prisma.$on('error', (e) => {
+  interface LogEvent {
+    message: string;
+    target: string;
+  }
+
+  prisma.$on('error', (e: LogEvent) => {
     logger.error(`Prisma Error: ${e.message}`);
   });
 
-  prisma.$on('info', (e) => {
+  interface InfoEvent {
+    message: string;
+    target: string;
+  }
+
+  prisma.$on('info', (e: InfoEvent) => {
     logger.info(`Prisma Info: ${e.message}`);
   });
 
-  prisma.$on('warn', (e) => {
+  interface WarnEvent {
+    message: string;
+    target: string;
+  }
+
+  prisma.$on('warn', (e: WarnEvent) => {
     logger.warn(`Prisma Warning: ${e.message}`);
   });
 };
