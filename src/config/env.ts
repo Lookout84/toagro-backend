@@ -39,7 +39,7 @@ export const config: Config = {
   smtpUser: process.env.SMTP_USER || '',
   smtpPass: process.env.SMTP_PASS || '',
   uploadDir: process.env.UPLOAD_DIR || 'uploads',
-  rabbitmqUrl: process.env.RABBITMQ_URL || 'amqp://195.162.70.72:5672',
+  rabbitmqUrl: process.env.RABBITMQ_URL || 'amqp://195.162.70.72:15672',
   rabbitmqUser: process.env.RABBITMQ_USER || 'guest',
   rabbitmqPassword: process.env.RABBITMQ_PASSWORD || 'guest',
   serviceName: process.env.SERVICE_NAME || 'toagro-api'
