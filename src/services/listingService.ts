@@ -11,6 +11,7 @@ interface CreateListingData {
   categoryId?: number; // Додаємо поле categoryId
   images?: string[];
   userId: number;
+  condition?: 'NEW' | 'USED';
 }
 
 interface UpdateListingData {
@@ -22,11 +23,14 @@ interface UpdateListingData {
   categoryId?: number; // Додаємо поле categoryId
   active?: boolean;
   images?: string[];
+  condition?: 'NEW' | 'USED';
 }
 
 interface ListingFilters {
   category?: string;
   categoryId?: number; // Додаємо поле categoryId
+  brandId?: number; // Додаємо поле brandId
+  brand?: string; // Додаємо поле brand
   minPrice?: number;
   maxPrice?: number;
   location?: string;
@@ -59,6 +63,7 @@ export const listingService = {
         categoryId: data.categoryId,
         images: data.images || [],
         userId: data.userId,
+        condition: data.condition || 'USED',
       },
     });
 

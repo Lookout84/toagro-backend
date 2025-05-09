@@ -378,6 +378,7 @@ interface CreateCategoryData {
   image?: string;
   parentId?: number;
   active?: boolean;
+  favorite?: boolean;
 }
 
 interface UpdateCategoryData {
@@ -387,6 +388,7 @@ interface UpdateCategoryData {
   image?: string;
   parentId?: number;
   active?: boolean;
+  favorite?: boolean;
 }
 
 interface CategoryFilters {

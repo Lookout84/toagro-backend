@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { listingService } from '../services/listingService';
 import { logger } from '../utils/logger';
 
+
 export const listingController = {
   /**
  * @swagger
@@ -54,8 +55,9 @@ export const listingController = {
   async createListing(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.userId!;
-      const { title, description, price, location, category, categoryId, images } = req.body;
+      const { title, description, price, location, category, categoryId, images, brandId, brand } = req.body;
       
+      // Remove brandId and brand if they're not defined in CreateListingData
       const result = await listingService.createListing({
         title,
         description,
@@ -65,6 +67,10 @@ export const listingController = {
         categoryId,
         images,
         userId,
+        condition: 'USED',
+        // Include these properties only if they're part of CreateListingData
+        ...(brandId ? { brandId } : {}),
+        ...(brand ? { brand } : {}),
       });
       
       res.status(201).json({
@@ -80,7 +86,7 @@ export const listingController = {
   async updateListing(req: Request, res: Response, next: NextFunction) {
     try {
       const id = parseInt(req.params.id);
-      const { title, description, price, location, category, categoryId, active, images } = req.body;
+      const { title, description, price, location, category, categoryId, active, images, brand, brandId } = req.body;
       
       const result = await listingService.updateListing(id, {
         title,
@@ -91,6 +97,9 @@ export const listingController = {
         categoryId,
         active,
         images,
+        condition: 'USED',
+        ...(brandId ? { brandId } : {}),
+        ...(brand ? { brand } : {}),
       });
       
       res.status(200).json({
@@ -108,6 +117,8 @@ export const listingController = {
       const {
         category,
         categoryId,
+        brandId,
+        brand,
         minPrice,
         maxPrice,
         location,
@@ -121,6 +132,8 @@ export const listingController = {
       const result = await listingService.getListings({
         category: category as string,
         categoryId: categoryId ? parseInt(categoryId as string) : undefined,
+        brandId: brandId ? parseInt(brandId as string) : undefined,
+        brand: brand as string,
         minPrice: minPrice ? parseFloat(minPrice as string) : undefined,
         maxPrice: maxPrice ? parseFloat(maxPrice as string) : undefined,
         location: location as string,

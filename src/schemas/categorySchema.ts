@@ -9,6 +9,7 @@ export const createCategorySchema = z.object({
     image: z.object({}).optional(),
     parentId: z.number().int().positive().optional(),
     active: z.boolean().optional(),
+    favorite: z.boolean().optional(),
   }),
 });
         
@@ -22,6 +23,7 @@ export const updateCategorySchema = z.object({
     image: z.string().optional(),
     parentId: z.number().int().positive().optional(),
     active: z.boolean().optional(),
+    favorite: z.boolean().optional(),
   }),
   params: z.object({
     id: z.string().transform((val) => parseInt(val)),

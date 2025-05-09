@@ -48,7 +48,7 @@ export const categoryController = {
  */
   async createCategory(req: Request, res: Response, next: NextFunction) {
     try {
-      const { name, slug, description, image, parentId, active } = req.body;
+      const { name, slug, description, image, parentId, active, favorite } = req.body;
       
       const result = await categoryService.createCategory({
         name,
@@ -57,6 +57,7 @@ export const categoryController = {
         image,
         parentId,
         active,
+        favorite,
       });
       
       res.status(201).json({
@@ -72,7 +73,7 @@ export const categoryController = {
   async updateCategory(req: Request, res: Response, next: NextFunction) {
     try {
       const id = parseInt(req.params.id);
-      const { name, slug, description, image, parentId, active } = req.body;
+      const { name, slug, description, image, parentId, active, favorite } = req.body;
       
       const result = await categoryService.updateCategory(id, {
         name,
@@ -81,6 +82,7 @@ export const categoryController = {
         image,
         parentId,
         active,
+        favorite,
       });
       
       res.status(200).json({

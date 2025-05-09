@@ -181,7 +181,7 @@ enum UserRole {
 }
 
 model Listing {
-  id          Int       @id @default(autoincrement())
+  id          Int           @id @default(autoincrement())
   title       String
   description String
   price       Float
@@ -189,13 +189,30 @@ model Listing {
   category    String // Залишимо поле для зворотної сумісності
   categoryId  Int? // Нове поле для зв'язку з моделлю Category
   userId      Int
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  active      Boolean       @default(true)
+  images      String[]
+  views       Int           @default(0)
+  condition   ItemCondition @default(USED) // Нове поле: новий чи вживаний
+  brandId     Int? // Нове поле для зв'язку з моделлю Brand
+  brand       Brand?        @relation(fields: [brandId], references: [id]) // Зв'язок з брендом
+  user        User          @relation(fields: [userId], references: [id])
+  categoryRel Category?     @relation(fields: [categoryId], references: [id]) // Новий зв'язок
+}
+
+// Нова модель для брендів техніки
+model Brand {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  slug        String    @unique
+  description String?
+  logo        String?
+  active      Boolean   @default(true)
+  popular     Boolean   @default(false)  // Для відображення популярних брендів
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
-  active      Boolean   @default(true)
-  images      String[]
-  views       Int       @default(0)
-  user        User      @relation(fields: [userId], references: [id])
-  categoryRel Category? @relation(fields: [categoryId], references: [id]) // Новий зв'язок
+  listings    Listing[]
 }
 
 model Message {
@@ -234,6 +251,7 @@ model Category {
   image       String?
   parentId    Int?
   active      Boolean    @default(true)
+  favorite    Boolean    @default(false)
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   parent      Category?  @relation("CategoryToCategory", fields: [parentId], references: [id])
@@ -299,4 +317,9 @@ enum CampaignStatus {
   PAUSED
   COMPLETED
   CANCELLED
+}
+
+enum ItemCondition {
+  NEW
+  USED
 }
