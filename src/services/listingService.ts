@@ -47,12 +47,12 @@ export const listingService = {
       const category = await prisma.category.findUnique({
         where: { id: data.categoryId },
       });
-  
+
       if (!category) {
         throw new Error('Категорія не знайдена');
       }
     }
-    
+
     const listing = await prisma.listing.create({
       data: {
         title: data.title,
@@ -144,16 +144,16 @@ export const listingService = {
       sortBy = 'createdAt',
       sortOrder = 'desc',
     } = filters;
-  
+
     const skip = (page - 1) * limit;
-  
+
     // Build filter conditions
     const where: any = { active: true };
-  
+
     if (category) {
       where.category = category;
     }
-  
+
     if (categoryId) {
       where.categoryId = categoryId;
     }
