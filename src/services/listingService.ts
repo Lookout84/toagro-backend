@@ -34,6 +34,7 @@ interface ListingFilters {
   minPrice?: number;
   maxPrice?: number;
   location?: string;
+  condition?: 'NEW' | 'USED';
   search?: string;
   page?: number;
   limit?: number;
@@ -139,6 +140,7 @@ export const listingService = {
       maxPrice,
       location,
       search,
+      condition,
       page = 1,
       limit = 10,
       sortBy = 'createdAt',
@@ -179,6 +181,9 @@ export const listingService = {
       ];
     }
 
+    if (condition) {
+      where.condition = condition;
+    } 
     // Build sort object
     const orderBy: any = {};
     orderBy[sortBy] = sortOrder;

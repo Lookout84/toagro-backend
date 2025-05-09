@@ -31,6 +31,7 @@ import categoryRoutes from './routes/categories';
 import notificationRoutes from './routes/notifications';
 import queueRoutes from './routes/queues';
 import campaignRoutes from './routes/campaigns';
+import brandRoutes from './routes/brandRoutes';
 
 // Функція для перевірки доступності порту
 const isPortAvailable = (port: number): Promise<boolean> => {
@@ -372,6 +373,7 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/queues', queueRoutes);
 app.use('/api/campaigns', campaignRoutes);
+app.use('/api/brands', brandRoutes);
 
 // Error handling
 app.use(errorHandler);
