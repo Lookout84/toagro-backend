@@ -10,19 +10,21 @@ interface CreateListingData {
   category: string;
   categoryId?: number; // Додаємо поле categoryId
   brandId?: number; // Додаємо поле brandId
+  active?: boolean;
   images?: string[];
   userId: number;
   condition?: 'NEW' | 'USED';
 }
 
 interface UpdateListingData {
-title: string;
+  title: string;
   description: string;
   price: number;
   location: string;
   category: string;
   categoryId?: number; // Додаємо поле categoryId
   brandId?: number; // Додаємо поле brandId
+  active?: boolean;
   images?: string[];
   userId: number;
   condition?: 'NEW' | 'USED';
@@ -46,57 +48,65 @@ interface ListingFilters {
 
 export const listingService = {
   async createListing(data: CreateListingData) {
-  try {
-    // Перевірка категорії, якщо вказано
-    if (data.categoryId) {
-      const category = await prisma.category.findUnique({
-        where: { id: data.categoryId },
-      });
-  
-      if (!category) {
-        throw new Error('Категорія не знайдена');
-      }
-    }
-    
-    // Перевірка бренду, якщо вказано
-    if (data.brandId) {
-      const brand = await prisma.brand.findUnique({
-        where: { id: data.brandId },
-      });
-  
-      if (!brand) {
-        throw new Error('Бренд не знайдений');
-      }
-    }
-    
-    // Перетворення condition у правильний формат для enum в Prisma
-    const condition = data.condition?.toUpperCase() as any || 'USED';
-    
-    const listing = await prisma.listing.create({
-      data: {
-        title: data.title,
-        description: data.description,
-        price: data.price,
-        location: data.location,
-        category: data.category,
-        categoryId: data.categoryId,
-        brandId: data.brandId,
-        images: data.images || [],
-        userId: data.userId,
-        condition, // Використовуємо перетворене значення
-      },
-    });
+    try {
+      // Перевірка категорії, якщо вказано
+      if (data.categoryId) {
+        const category = await prisma.category.findUnique({
+          where: { id: data.categoryId },
+        });
 
-    return { listing };
-  } catch (error) {
-    logger.error(`Failed to create listing: ${error}`);
-    throw error;
-  }
-},
+        if (!category) {
+          throw new Error('Категорія не знайдена');
+        }
+      }
+
+      // Перевірка бренду, якщо вказано
+      if (data.brandId) {
+        const brand = await prisma.brand.findUnique({
+          where: { id: data.brandId },
+        });
+
+        if (!brand) {
+          throw new Error('Бренд не знайдений');
+        }
+      }
+
+      // Перетворення condition у правильний формат для enum в Prisma
+      const condition = (data.condition?.toUpperCase() as any) || 'USED';
+
+      const listing = await prisma.listing.create({
+        data: {
+          title: data.title,
+          description: data.description,
+          price: data.price,
+          location: data.location,
+          category: data.category,
+          categoryId: data.categoryId,
+          brandId: data.brandId,
+          images: data.images || [],
+          userId: data.userId,
+          condition, // Використовуємо перетворене значення
+        },
+      });
+
+      return { listing };
+    } catch (error) {
+      logger.error(`Failed to create listing: ${error}`);
+      throw error;
+    }
+  },
   async updateListing(id: number, data: UpdateListingData) {
+    // Convert condition to the correct Prisma enum if present
+    const updateData = {
+      ...data,
+      condition: data.condition
+        ? (data.condition.toUpperCase() as any)
+        : undefined,
+    };
+
     const listing = await prisma.listing.update({
       where: { id },
-      data,
+      data: updateData,
     });
 
     // Clear cache
@@ -205,7 +215,7 @@ export const listingService = {
 
     if (condition) {
       where.condition = condition;
-    } 
+    }
     // Build sort object
     const orderBy: any = {};
     orderBy[sortBy] = sortOrder;
@@ -253,7 +263,24 @@ export const listingService = {
 
     return result;
   },
+  // Додайте цей метод до listingService
+  async isListingOwner(id: number, userId: number): Promise<boolean> {
+    try {
+      const listing = await prisma.listing.findUnique({
+        where: { id },
+        select: { userId: true },
+      });
 
+      if (!listing) {
+        throw new Error('Оголошення не знайдено');
+      }
+
+      return listing.userId === userId;
+    } catch (error) {
+      logger.error(`Failed to check listing ownership: ${error}`);
+      throw error;
+    }
+  },
   async getUserListings(userId: number, page = 1, limit = 10) {
     const skip = (page - 1) * limit;
 

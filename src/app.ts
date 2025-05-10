@@ -362,6 +362,24 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Static files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
+app.post('/debug', (req, res) => {
+  res.json({
+    headers: req.headers,
+    body: req.body,
+    method: req.method,
+    contentType: req.headers['content-type'],
+    bodyKeys: Object.keys(req.body)
+  });
+});
+
+// Додайте цей код перед реєстрацією маршрутів
+app.post('/raw-json-test', (req, res) => {
+  res.json({
+    success: true,
+    receivedDataKeys: Object.keys(req.body),
+    receivedData: req.body
+  });
+});
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/listings', listingsRoutes);
