@@ -1,74 +1,28 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response } from 'express';
+import { PrismaClient } from '@prisma/client';
 import { listingService } from '../services/listingService';
 import { logger } from '../utils/logger';
-import { PrismaClient } from '@prisma/client';
 import {
   createListingSchema,
   updateListingSchema,
   listingQuerySchema,
   listingIdParamSchema,
 } from '../schemas/listingSchema';
-import { CreateListingInput } from '../schemas/listingSchema';
 
 const prisma = new PrismaClient();
 
 export const listingController = {
   /**
-   * @swagger
-   * /api/listings:
-   *   post:
-   *     tags:
-   *       - Listings
-   *     summary: Створення нового оголошення
-   *     description: Створює нове оголошення для автентифікованого користувача
-   *     security:
-   *       - bearerAuth: []
-   *     requestBody:
-   *       required: true
-   *       content:
-   *         application/json:
-   *           schema:
-   *             $ref: '#/definitions/CreateListingRequest'
-   *     responses:
-   *       201:
-   *         description: Оголошення успішно створено
-   *         content:
-   *           application/json:
-   *             schema:
-   *               type: object
-   *               properties:
-   *                 status:
-   *                   type: string
-   *                   example: success
-   *                 message:
-   *                   type: string
-   *                   example: Оголошення успішно створено
-   *                 data:
-   *                   type: object
-   *                   properties:
-   *                     listing:
-   *                       $ref: '#/definitions/Listing'
-   *       400:
-   *         description: Помилка валідації даних
-   *         content:
-   *           application/json:
-   *             schema:
-   *               $ref: '#/definitions/Error'
-   *       401:
-   *         description: Користувач не автентифікований
-   *         content:
-   *           application/json:
-   *             schema:
-   *               $ref: '#/definitions/Error'
+   * Створення нового оголошення
    */
   async createListing(req: Request, res: Response): Promise<void> {
     try {
-      // Логуємо отримані дані для діагностики
-      console.log('Отримані дані:', req.body);
-      console.log('Content-Type:', req.headers['content-type']);
+      logger.info('Спроба створення оголошення');
+      logger.debug('Отримані дані:', JSON.stringify(req.body));
 
-      // Перевіряємо наявність тіла запиту
+      // 1. Перевіряємо наявність тіла запиту
       if (!req.body || Object.keys(req.body).length === 0) {
+        logger.warn('Отримано порожнє тіло запиту');
         res.status(400).json({
           status: 'error',
           message: 'Відсутні дані для створення оголошення',
@@ -76,97 +30,44 @@ export const listingController = {
         return;
       }
 
-      // Перевірка наявності обов'язкових полів
-      const requiredFields = [
-        'title',
-        'description',
-        'price',
-        'location',
-        'category',
-        'categoryId',
-      ];
-      const missingFields = requiredFields.filter(
-        (field) => req.body[field] === undefined
-      );
-
-      if (missingFields.length > 0) {
-        res.status(400).json({
-          status: 'error',
-          message: `Відсутні обов'язкові поля: ${missingFields.join(', ')}`,
-          receivedData: req.body,
-        });
-        return;
-      }
-
-      // Перетворення типів даних перед валідацією
-      const preprocessedData = {
-        ...req.body,
-        title: String(req.body.title || ''),
-        description: String(req.body.description || ''),
-        price:
-          typeof req.body.price === 'string'
-            ? Number(req.body.price)
-            : req.body.price,
-        location: String(req.body.location || ''),
-        category: String(req.body.category || ''),
-        categoryId:
-          typeof req.body.categoryId === 'string'
-            ? Number(req.body.categoryId)
-            : req.body.categoryId,
-        brandId: req.body.brandId
-          ? typeof req.body.brandId === 'string'
-            ? Number(req.body.brandId)
-            : req.body.brandId
-          : undefined,
-        images: Array.isArray(req.body.images)
-          ? req.body.images
-          : req.body.images
-            ? [req.body.images]
-            : [],
-        condition: req.body.condition?.toLowerCase() || 'used',
-      };
-
-      console.log('Препроцесовані дані:', preprocessedData);
-
-      // Валідація тіла запиту
-      const validationResult = createListingSchema.safeParse(preprocessedData);
+      // 2. Валідація даних
+      const validationResult = createListingSchema.safeParse(req.body);
       if (!validationResult.success) {
+        logger.warn('Помилка валідації даних:', JSON.stringify(validationResult.error.errors));
         res.status(400).json({
           status: 'error',
           message: 'Помилка валідації',
-          errors: validationResult.error.errors,
-          receivedData: preprocessedData,
+          errors: validationResult.error.format(),
         });
         return;
       }
 
-      // Отримуємо ID користувача з JWT токена
-      if (!(req as any).user || !(req as any).user.id) {
+      // 3. Отримуємо ID користувача з JWT токена
+      const userId = (req as any).user?.id;
+      if (!userId) {
+        logger.warn('Спроба створення оголошення без автентифікації');
         res.status(401).json({
           status: 'error',
-          message:
-            'Користувач не автентифікований або відсутній ID користувача',
+          message: 'Користувач не автентифікований',
         });
         return;
       }
 
-      const userId = (req as any).user.id;
-
-      // Логуємо валідовані дані
-      console.log('Валідовані дані:', validationResult.data);
-
-      // Створюємо оголошення
+      // 4. Перетворюємо condition в формат для бази даних (NEW/USED)
+      const condition = validationResult.data.condition === 'new' ? 'NEW' : 'USED';
+      
+      // 5. Створюємо оголошення
       const { listing } = await listingService.createListing({
         ...validationResult.data,
         userId,
-        condition: ((): 'NEW' | 'USED' => {
-          const cond = validationResult.data.condition?.toLowerCase();
-          return cond === 'new' ? 'NEW' : 'USED';
-        })(),
+        condition,
       });
 
+      // 6. Успішна відповідь
+      logger.info(`Створено нове оголошення з ID: ${listing.id}`);
       res.status(201).json({
         status: 'success',
+        message: 'Оголошення успішно створено',
         data: { listing },
       });
     } catch (error: any) {
@@ -178,301 +79,85 @@ export const listingController = {
       });
     }
   },
-  // async createListing(req: Request, res: Response): Promise<void> {
-  //   try {
-  //     // Перевіряємо наявність тіла запиту
-  //     if (!req.body || Object.keys(req.body).length === 0) {
-  //       res.status(400).json({
-  //         status: 'error',
-  //         message: 'Відсутні дані для створення оголошення',
-  //       });
-  //       return;
-  //     }
 
-  //     // Перетворення типів даних перед валідацією
-  //     const preprocessedData = {
-  //       ...req.body,
-  //       title: String(req.body.title || ''),
-  //       description: String(req.body.description || ''),
-  //       price:
-  //         typeof req.body.price === 'string'
-  //           ? Number(req.body.price)
-  //           : req.body.price,
-  //       location: String(req.body.location || ''),
-  //       category: String(req.body.category || ''),
-  //       categoryId:
-  //         typeof req.body.categoryId === 'string'
-  //           ? Number(req.body.categoryId)
-  //           : req.body.categoryId,
-  //       brandId: req.body.brandId
-  //         ? typeof req.body.brandId === 'string'
-  //           ? Number(req.body.brandId)
-  //           : req.body.brandId
-  //         : undefined,
-  //       images: Array.isArray(req.body.images)
-  //         ? req.body.images
-  //         : req.body.images
-  //           ? [req.body.images]
-  //           : [],
-  //       condition: req.body.condition?.toLowerCase() || 'used',
-  //     };
-
-  //     // Валідація тіла запиту
-  //     const validationResult = createListingSchema.safeParse(preprocessedData);
-  //     if (!validationResult.success) {
-  //       res.status(400).json({
-  //         status: 'error',
-  //         message: 'Помилка валідації',
-  //         errors: validationResult.error.errors,
-  //       });
-  //       return;
-  //     }
-
-  //     // Отримуємо ID користувача з JWT токена
-  //     if (!(req as any).user || !(req as any).user.id) {
-  //       res.status(401).json({
-  //         status: 'error',
-  //         message:
-  //           'Користувач не автентифікований або відсутній ID користувача',
-  //       });
-  //       return;
-  //     }
-
-  //     const userId = (req as any).user.id;
-
-  //     // Створюємо оголошення
-  //     const { listing } = await listingService.createListing({
-  //       ...validationResult.data,
-  //       userId,
-  //       condition: ((): 'NEW' | 'USED' => {
-  //         const cond = validationResult.data.condition?.toLowerCase();
-  //         return cond === 'new' ? 'NEW' : 'USED';
-  //       })(),
-  //     });
-
-  //     res.status(201).json({
-  //       status: 'success',
-  //       data: { listing },
-  //     });
-  //   } catch (error: any) {
-  //     logger.error(`Помилка створення оголошення: ${error.message}`);
-  //     res.status(500).json({
-  //       status: 'error',
-  //       message: 'Не вдалося створити оголошення',
-  //       details: error.message,
-  //     });
-  //   }
-  // },
-
-  // Додайте цей новий метод до listingController
-  async createListingSimple(req: Request, res: Response): Promise<void> {
-    try {
-      console.log('=== SIMPLE LISTING CREATION ===');
-      console.log('Отримані дані:', req.body);
-
-      // Перевіряємо наявність тіла запиту
-      if (!req.body || Object.keys(req.body).length === 0) {
-        res.status(400).json({
-          status: 'error',
-          message: 'Відсутні дані для створення оголошення',
-        });
-        return;
-      }
-
-      // Отримуємо ID користувача з JWT токена
-      if (!(req as any).user || !(req as any).user.id) {
-        res.status(401).json({
-          status: 'error',
-          message:
-            'Користувач не автентифікований або відсутній ID користувача',
-        });
-        return;
-      }
-
-      const userId = (req as any).user.id;
-
-      // Перетворення типів та встановлення дефолтних значень
-      const listingData = {
-        title: String(req.body.title || ''),
-        description: String(req.body.description || ''),
-        price: Number(req.body.price || 0),
-        location: String(req.body.location || ''),
-        category: String(req.body.category || ''),
-        categoryId: Number(req.body.categoryId || 0),
-        brandId: req.body.brandId ? Number(req.body.brandId) : undefined,
-        images: Array.isArray(req.body.images)
-          ? req.body.images
-          : req.body.images
-            ? [req.body.images]
-            : [],
-        condition: req.body.condition?.toLowerCase() === 'new' ? 'NEW' : 'USED',
-        userId: userId,
-      };
-
-      console.log('Оброблені дані:', listingData);
-
-      // Мінімальна валідація
-      const requiredFields: (keyof typeof listingData)[] = [
-        'title',
-        'description',
-        'price',
-        'location',
-        'category',
-        'categoryId',
-      ];
-      const missingFields = requiredFields.filter(
-        (field) => !listingData[field]
-      );
-
-      if (missingFields.length > 0) {
-        res.status(400).json({
-          status: 'error',
-          message: `Відсутні обов'язкові поля: ${missingFields.join(', ')}`,
-        });
-        return;
-      }
-
-      // Створення оголошення напряму через prisma
-      const listing = await prisma.listing.create({
-        data: {
-          title: listingData.title,
-          description: listingData.description,
-          price: listingData.price,
-          location: listingData.location,
-          category: listingData.category,
-          categoryId: listingData.categoryId,
-          brandId: listingData.brandId,
-          images: listingData.images,
-          condition: listingData.condition as any,
-          userId: userId,
-          active: true,
-        },
-      });
-
-      res.status(201).json({
-        status: 'success',
-        message: 'Оголошення створено успішно',
-        data: { listing },
-      });
-    } catch (error: any) {
-      console.error('Simple creation error:', error);
-      res.status(500).json({
-        status: 'error',
-        message: 'Не вдалося створити оголошення',
-        details: error.message,
-      });
-    }
-  },
-
+  /**
+   * Оновлення існуючого оголошення
+   */
   async updateListing(req: Request, res: Response): Promise<void> {
     try {
-      // Валідація параметра ID
+      logger.info('Спроба оновлення оголошення');
+      
+      // 1. Валідація ID оголошення
       const paramsValidation = listingIdParamSchema.safeParse(req.params);
       if (!paramsValidation.success) {
+        logger.warn('Некоректний ID оголошення:', JSON.stringify(paramsValidation.error.errors));
         res.status(400).json({
           status: 'error',
           message: 'Некоректний ID оголошення',
-          errors: paramsValidation.error.errors,
+          errors: paramsValidation.error.format(),
         });
         return;
       }
-
+      
       const { id } = paramsValidation.data;
-
-      // Перетворення типів даних перед валідацією
-      const preprocessedData = {
-        ...req.body,
-        price:
-          typeof req.body.price === 'string'
-            ? Number(req.body.price)
-            : req.body.price,
-        categoryId: req.body.categoryId
-          ? typeof req.body.categoryId === 'string'
-            ? Number(req.body.categoryId)
-            : req.body.categoryId
-          : undefined,
-        brandId: req.body.brandId
-          ? typeof req.body.brandId === 'string'
-            ? Number(req.body.brandId)
-            : req.body.brandId
-          : undefined,
-        images: Array.isArray(req.body.images)
-          ? req.body.images
-          : req.body.images
-            ? [req.body.images]
-            : undefined,
-        condition: req.body.condition?.toLowerCase(),
-      };
-
-      // Валідація тіла запиту
-      const validationResult = updateListingSchema.safeParse(preprocessedData);
+      
+      // 2. Валідація даних для оновлення
+      const validationResult = updateListingSchema.safeParse(req.body);
       if (!validationResult.success) {
+        logger.warn('Помилка валідації даних для оновлення:', JSON.stringify(validationResult.error.errors));
         res.status(400).json({
           status: 'error',
           message: 'Помилка валідації',
-          errors: validationResult.error.errors,
+          errors: validationResult.error.format(),
         });
         return;
       }
-
-      // Отримуємо ID користувача з JWT токена
+      
+      // 3. Отримуємо ID користувача з JWT токена
       const userId = (req as any).user?.id;
       if (!userId) {
+        logger.warn('Спроба оновлення оголошення без автентифікації');
         res.status(401).json({
           status: 'error',
           message: 'Користувач не автентифікований',
         });
         return;
       }
-
-      // Перевіряємо, чи є користувач власником оголошення або адміністратором
+      
+      // 4. Перевіряємо права доступу
       const isOwner = await listingService.isListingOwner(id, userId);
       const isAdmin = (req as any).user?.role === 'ADMIN';
-
+      
       if (!isOwner && !isAdmin) {
+        logger.warn(`Користувач ${userId} намагається оновити чуже оголошення ${id}`);
         res.status(403).json({
           status: 'error',
           message: 'У вас немає прав для редагування цього оголошення',
         });
         return;
       }
-
-      // Формуємо updateData без undefined для обов'язкових полів
-      const updateData: any = {
-        userId, // Додаємо userId, оскільки він є обов'язковим у UpdateListingData
-        ...Object.fromEntries(
-          Object.entries(validationResult.data).filter(
-            ([_, v]) => v !== undefined
-          )
-        ),
-      };
-
-      // Примусово приводимо до string, якщо поля присутні
-      if (updateData.title !== undefined)
-        updateData.title = String(updateData.title);
-      if (updateData.description !== undefined)
-        updateData.description = String(updateData.description);
-      if (updateData.location !== undefined)
-        updateData.location = String(updateData.location);
-      if (updateData.category !== undefined)
-        updateData.category = String(updateData.category);
-
+      
+      // 5. Підготовка даних для оновлення
+      const updateData: any = { ...validationResult.data };
+      
+      // Перетворюємо condition в формат для бази даних, якщо він присутній
       if (updateData.condition) {
-        updateData.condition = updateData.condition.toLowerCase() as
-          | 'new'
-          | 'used';
+        updateData.condition = updateData.condition === 'new' ? 'NEW' : 'USED';
       }
-
-      // Оновлюємо оголошення
+      
+      // 6. Оновлюємо оголошення
       const { listing } = await listingService.updateListing(id, updateData);
-
+      
+      // 7. Успішна відповідь
+      logger.info(`Оголошення з ID ${id} успішно оновлено`);
       res.status(200).json({
         status: 'success',
+        message: 'Оголошення успішно оновлено',
         data: { listing },
       });
     } catch (error: any) {
       logger.error(`Помилка оновлення оголошення: ${error.message}`);
-
+      
       if (error.message.includes('не знайдено')) {
         res.status(404).json({
           status: 'error',
@@ -487,22 +172,32 @@ export const listingController = {
       }
     }
   },
+
+  /**
+   * Отримання списку оголошень з фільтрами
+   */
   async getListings(req: Request, res: Response): Promise<void> {
     try {
-      // Валідація параметрів запиту
+      logger.info('Запит на отримання списку оголошень');
+      
+      // 1. Валідація параметрів запиту
       const queryValidation = listingQuerySchema.safeParse(req.query);
       if (!queryValidation.success) {
+        logger.warn('Некоректні параметри запиту:', JSON.stringify(queryValidation.error.errors));
         res.status(400).json({
           status: 'error',
           message: 'Некоректні параметри запиту',
-          errors: queryValidation.error.errors,
+          errors: queryValidation.error.format(),
         });
         return;
       }
-
+      
+      // 2. Отримання списку оголошень
       const filters = queryValidation.data;
       const result = await listingService.getListings(filters);
-
+      
+      // 3. Успішна відповідь
+      logger.info(`Отримано ${result.listings.length} оголошень з ${result.total} загальних`);
       res.status(200).json({
         status: 'success',
         data: result,
@@ -512,33 +207,44 @@ export const listingController = {
       res.status(500).json({
         status: 'error',
         message: 'Не вдалося отримати список оголошень',
+        details: error.message,
       });
     }
   },
+
+  /**
+   * Отримання деталей конкретного оголошення
+   */
   async getListing(req: Request, res: Response): Promise<void> {
     try {
-      // Валідація параметра ID
+      logger.info('Запит на отримання оголошення');
+      
+      // 1. Валідація параметра ID
       const paramsValidation = listingIdParamSchema.safeParse(req.params);
       if (!paramsValidation.success) {
+        logger.warn('Некоректний ID оголошення:', JSON.stringify(paramsValidation.error.errors));
         res.status(400).json({
           status: 'error',
           message: 'Некоректний ID оголошення',
-          errors: paramsValidation.error.errors,
+          errors: paramsValidation.error.format(),
         });
         return;
       }
-
+      
       const { id } = paramsValidation.data;
-
+      
+      // 2. Отримання оголошення
       const result = await listingService.getListing(id);
-
+      
+      // 3. Успішна відповідь
+      logger.info(`Отримано оголошення з ID ${id}`);
       res.status(200).json({
         status: 'success',
         data: result,
       });
     } catch (error: any) {
       logger.error(`Помилка отримання оголошення: ${error.message}`);
-
+      
       if (error.message.includes('не знайдено')) {
         res.status(404).json({
           status: 'error',
@@ -548,56 +254,69 @@ export const listingController = {
         res.status(500).json({
           status: 'error',
           message: 'Не вдалося отримати оголошення',
+          details: error.message,
         });
       }
     }
   },
+
+  /**
+   * Видалення оголошення
+   */
   async deleteListing(req: Request, res: Response): Promise<void> {
     try {
-      // Валідація параметра ID
+      logger.info('Запит на видалення оголошення');
+      
+      // 1. Валідація параметра ID
       const paramsValidation = listingIdParamSchema.safeParse(req.params);
       if (!paramsValidation.success) {
+        logger.warn('Некоректний ID оголошення:', JSON.stringify(paramsValidation.error.errors));
         res.status(400).json({
           status: 'error',
           message: 'Некоректний ID оголошення',
-          errors: paramsValidation.error.errors,
+          errors: paramsValidation.error.format(),
         });
         return;
       }
-
+      
       const { id } = paramsValidation.data;
-
-      // Отримуємо ID користувача з JWT токена
+      
+      // 2. Отримуємо ID користувача з JWT токена
       const userId = (req as any).user?.id;
       if (!userId) {
+        logger.warn('Спроба видалення оголошення без автентифікації');
         res.status(401).json({
           status: 'error',
           message: 'Користувач не автентифікований',
         });
         return;
       }
-
-      // Перевіряємо, чи є користувач власником оголошення або адміністратором
+      
+      // 3. Перевіряємо права доступу
       const isOwner = await listingService.isListingOwner(id, userId);
       const isAdmin = (req as any).user?.role === 'ADMIN';
-
+      
       if (!isOwner && !isAdmin) {
+        logger.warn(`Користувач ${userId} намагається видалити чуже оголошення ${id}`);
         res.status(403).json({
           status: 'error',
           message: 'У вас немає прав для видалення цього оголошення',
         });
         return;
       }
-
+      
+      // 4. Видаляємо оголошення
       await listingService.deleteListing(id);
-
+      
+      // 5. Успішна відповідь
+      logger.info(`Оголошення з ID ${id} успішно видалено`);
       res.status(200).json({
         status: 'success',
         message: 'Оголошення успішно видалено',
       });
     } catch (error: any) {
       logger.error(`Помилка видалення оголошення: ${error.message}`);
-
+      
       if (error.message.includes('не знайдено')) {
         res.status(404).json({
           status: 'error',
@@ -613,36 +332,46 @@ export const listingController = {
     }
   },
 
+  /**
+   * Отримання оголошень користувача
+   */
   async getUserListings(req: Request, res: Response): Promise<void> {
     try {
-      // Отримуємо ID користувача з JWT токена
+      logger.info('Запит на отримання оголошень користувача');
+      
+      // 1. Отримуємо ID користувача з JWT токена
       const userId = (req as any).user?.id;
       if (!userId) {
+        logger.warn('Спроба отримання оголошень без автентифікації');
         res.status(401).json({
           status: 'error',
           message: 'Користувач не автентифікований',
         });
         return;
       }
-
-      // Валідація параметрів запиту
+      
+      // 2. Валідація параметрів запиту
       const queryValidation = listingQuerySchema.safeParse(req.query);
       if (!queryValidation.success) {
+        logger.warn('Некоректні параметри запиту:', JSON.stringify(queryValidation.error.errors));
         res.status(400).json({
           status: 'error',
           message: 'Некоректні параметри запиту',
-          errors: queryValidation.error.errors,
+          errors: queryValidation.error.format(),
         });
         return;
       }
-
+      
+      // 3. Отримання списку оголошень користувача
       const filters = {
         ...queryValidation.data,
-        userId, // Додаємо фільтрацію за ID користувача
+        userId,
       };
-
+      
       const result = await listingService.getListings(filters);
-
+      
+      // 4. Успішна відповідь
+      logger.info(`Отримано ${result.listings.length} оголошень користувача з ${result.total} загальних`);
       res.status(200).json({
         status: 'success',
         data: result,
@@ -652,71 +381,8 @@ export const listingController = {
       res.status(500).json({
         status: 'error',
         message: 'Не вдалося отримати оголошення користувача',
-      });
-    }
-  },
-  // Додайте цей метод до контролера
-  async createListingDirect(req: Request, res: Response): Promise<void> {
-    try {
-      console.log('=== DIRECT CREATION ===');
-      console.log('Отримані дані:', req.body);
-
-      // Перевіряємо наявність тіла запиту
-      if (!req.body || Object.keys(req.body).length === 0) {
-        res.status(400).json({
-          status: 'error',
-          message: 'Відсутні дані для створення оголошення',
-        });
-        return;
-      }
-
-      // Отримуємо ID користувача з JWT токена
-      if (!(req as any).user || !(req as any).user.id) {
-        res.status(401).json({
-          status: 'error',
-          message:
-            'Користувач не автентифікований або відсутній ID користувача',
-        });
-        return;
-      }
-
-      const userId = (req as any).user.id;
-
-      // Обробка обов'язкових полів та перетворення типів
-      const listingData = {
-        title: String(req.body.title || 'Без назви'),
-        description: String(req.body.description || 'Без опису'),
-        price: Number(req.body.price || 0),
-        location: String(req.body.location || 'Не вказано'),
-        category: String(req.body.category || 'Інше'),
-        categoryId: Number(req.body.categoryId || 1),
-        brandId: req.body.brandId ? Number(req.body.brandId) : undefined,
-        images: Array.isArray(req.body.images) ? req.body.images : [],
-        condition:
-          req.body.condition?.toLowerCase() === 'new'
-            ? ('NEW' as 'NEW')
-            : ('USED' as 'USED'),
-        userId: userId,
-      };
-
-      console.log('Оброблені дані:', listingData);
-
-      // Створюємо оголошення напряму через сервіс
-      const { listing } = await listingService.createListing(listingData);
-
-      // Повертаємо успішну відповідь
-      res.status(201).json({
-        status: 'success',
-        message: 'Оголошення створено без валідації',
-        data: { listing },
-      });
-    } catch (error: any) {
-      console.error('Direct creation error:', error);
-      res.status(500).json({
-        status: 'error',
-        message: 'Не вдалося створити оголошення',
         details: error.message,
       });
     }
-  },
+  }
 };

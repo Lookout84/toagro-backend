@@ -1,41 +1,17 @@
-import { Router } from 'express';
+import express from 'express';
 import { listingController } from '../controllers/listingController';
-import { authenticate, isOwnerOrAdmin } from '../middleware/auth';
-import { validate } from '../middleware/validation';
+import { authenticate } from '../middleware/auth';
 import { apiLimiter } from '../middleware/rateLimiter';
-import {
-  createListingSchema,
-  updateListingSchema,
-  listingQuerySchema
-} from '../schemas/listingSchema';
 
-const router = Router();
+const router = express.Router();
 
-// Public routes with rate limiting
-router.get('/', apiLimiter, validate(listingQuerySchema), listingController.getListings);
-router.get('/:id', apiLimiter, listingController.getListing);
-
-// Protected routes
-router.use(authenticate);
-router.post('/', validate(createListingSchema), listingController.createListing);
-router.put(
-  '/:id',
-  validate(updateListingSchema._def.schema || updateListingSchema),
-  isOwnerOrAdmin,
-  listingController.updateListing
-);
-router.delete('/:id', isOwnerOrAdmin, listingController.deleteListing);
-router.get('/user/me', listingController.getUserListings);
-
+// Діагностичні маршрути для тестування
 router.post('/test-no-validation', (req, res) => {
   try {
-    // Логуємо все, що прийшло
-    console.log('=== TEST ENDPOINT ===');
     console.log('Headers:', req.headers);
-    console.log('Raw Body:', req.body);
+    console.log('Body:', req.body);
     console.log('Content-Type:', req.headers['content-type']);
     
-    // Повертаємо отримані дані
     res.status(200).json({
       status: 'success',
       message: 'Дані отримано успішно (без валідації)',
@@ -51,9 +27,14 @@ router.post('/test-no-validation', (req, res) => {
   }
 });
 
-// Додайте цей маршрут
-router.post('/create-direct', authenticate, listingController.createListingDirect);
-// Додайте цей маршрут (без складної валідації)
-router.post('/create-simple', authenticate, listingController.createListingSimple);
+// Публічні маршрути
+router.get('/', apiLimiter, listingController.getListings);
+router.get('/:id', apiLimiter, listingController.getListing);
+
+// Захищені маршрути (потрібна авторизація)
+router.post('/', authenticate, listingController.createListing);
+router.put('/:id', authenticate, listingController.updateListing);
+router.delete('/:id', authenticate, listingController.deleteListing);
+router.get('/user/me', authenticate, listingController.getUserListings);
 
 export default router;
