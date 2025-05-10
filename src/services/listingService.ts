@@ -9,20 +9,22 @@ interface CreateListingData {
   location: string;
   category: string;
   categoryId?: number; // Додаємо поле categoryId
+  brandId?: number; // Додаємо поле brandId
   images?: string[];
   userId: number;
   condition?: 'NEW' | 'USED';
 }
 
 interface UpdateListingData {
-  title?: string;
-  description?: string;
-  price?: number;
-  location?: string;
-  category?: string;
+title: string;
+  description: string;
+  price: number;
+  location: string;
+  category: string;
   categoryId?: number; // Додаємо поле categoryId
-  active?: boolean;
+  brandId?: number; // Додаємо поле brandId
   images?: string[];
+  userId: number;
   condition?: 'NEW' | 'USED';
 }
 
@@ -34,7 +36,7 @@ interface ListingFilters {
   minPrice?: number;
   maxPrice?: number;
   location?: string;
-  condition?: 'NEW' | 'USED';
+  condition?: 'new' | 'used';
   search?: string;
   page?: number;
   limit?: number;
@@ -44,16 +46,32 @@ interface ListingFilters {
 
 export const listingService = {
   async createListing(data: CreateListingData) {
+  try {
+    // Перевірка категорії, якщо вказано
     if (data.categoryId) {
       const category = await prisma.category.findUnique({
         where: { id: data.categoryId },
       });
-
+  
       if (!category) {
         throw new Error('Категорія не знайдена');
       }
     }
-
+    
+    // Перевірка бренду, якщо вказано
+    if (data.brandId) {
+      const brand = await prisma.brand.findUnique({
+        where: { id: data.brandId },
+      });
+  
+      if (!brand) {
+        throw new Error('Бренд не знайдений');
+      }
+    }
+    
+    // Перетворення condition у правильний формат для enum в Prisma
+    const condition = data.condition?.toUpperCase() as any || 'USED';
+    
     const listing = await prisma.listing.create({
       data: {
         title: data.title,
@@ -62,15 +80,19 @@ export const listingService = {
         location: data.location,
         category: data.category,
         categoryId: data.categoryId,
+        brandId: data.brandId,
         images: data.images || [],
         userId: data.userId,
-        condition: data.condition || 'USED',
+        condition, // Використовуємо перетворене значення
       },
     });
 
     return { listing };
-  },
-
+  } catch (error) {
+    logger.error(`Failed to create listing: ${error}`);
+    throw error;
+  }
+},
   async updateListing(id: number, data: UpdateListingData) {
     const listing = await prisma.listing.update({
       where: { id },

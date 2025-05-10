@@ -7,6 +7,7 @@ import { apiLimiter } from '../middleware/rateLimiter';
 const router = Router();
 
 // Публічні маршрути (доступні всім)
+router.get('/all', apiLimiter, brandController.getAllBrands);
 router.get('/', apiLimiter, brandController.getBrands);
 router.get('/popular', apiLimiter, brandController.getPopularBrands);
 router.get('/:idOrSlug', apiLimiter, brandController.getBrand);

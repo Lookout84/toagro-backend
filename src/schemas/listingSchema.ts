@@ -1,18 +1,18 @@
 import { z } from 'zod';
 
+export const listingConditionEnum = z.enum(['new', 'used']);
+export type ListingCondition = z.infer<typeof listingConditionEnum>;
+
 export const createListingSchema = z.object({
-  body: z.object({
-    title: z.string().min(5, 'Назва повинна містити принаймні 5 символів'),
-    description: z.string().min(20, 'Опис повинен містити принаймні 20 символів'),
-    price: z.number().positive('Ціна повинна бути позитивним числом'),
-    location: z.string().min(3, 'Розташування повинно містити принаймні 3 символи'),
-    category: z.string().min(3, 'Категорія повинна містити принаймні 3 символи'),
-    categoryId: z.number().int().positive().optional(),
-    condition: z.enum(['new', 'used']).optional(),
-    baradId: z.number().int().positive().optional(),
-    brand: z.string().optional(),
-    images: z.array(z.string()).optional(),
-  }),
+  title: z.string().min(3, 'Заголовок повинен містити мінімум 3 символи'),
+  description: z.string().min(10, 'Опис повинен містити мінімум 10 символів'),
+  price: z.number().positive('Ціна має бути додатнім числом'),
+  location: z.string().min(2, 'Локація повинна містити мінімум 2 символи'),
+  category: z.string(),
+  categoryId: z.number().int().positive('ID категорії має бути додатнім числом'),
+  brandId: z.number().int().positive('ID бренду має бути додатнім числом').optional(),
+  images: z.array(z.string()).default([]),
+  condition: listingConditionEnum.default('used')
 });
 
 export const updateListingSchema = z.object({
@@ -50,3 +50,5 @@ export const listingFilterSchema = z.object({
     sortOrder: z.enum(['asc', 'desc']).optional(),
   }),
 });
+
+export type CreateListingInput = z.infer<typeof createListingSchema>;

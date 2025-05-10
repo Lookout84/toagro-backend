@@ -1,13 +1,13 @@
 import { Request, Response } from 'express';
 import { brandService } from '../services/brandService';
 import { logger } from '../utils/logger';
-import { 
-  createBrandSchema, 
+import {
+  createBrandSchema,
   updateBrandSchema,
   getBrandsQuerySchema,
   getPopularBrandsQuerySchema,
   getBrandParamSchema,
-  brandIdParamSchema
+  brandIdParamSchema,
 } from '../schemas/brandSchema';
 
 export const brandController = {
@@ -19,29 +19,29 @@ export const brandController = {
         res.status(400).json({
           status: 'error',
           message: 'Помилка валідації',
-          errors: validationResult.error.errors
+          errors: validationResult.error.errors,
         });
         return;
       }
 
       const { brand } = await brandService.createBrand(validationResult.data);
-      
+
       res.status(201).json({
         status: 'success',
-        data: { brand }
+        data: { brand },
       });
     } catch (error: any) {
       logger.error(`Помилка створення бренду: ${error.message}`);
-      
+
       if (error.message.includes('вже існує')) {
         res.status(409).json({
           status: 'error',
-          message: error.message
+          message: error.message,
         });
       } else {
         res.status(500).json({
           status: 'error',
-          message: 'Не вдалося створити бренд'
+          message: 'Не вдалося створити бренд',
         });
       }
     }
@@ -55,50 +55,53 @@ export const brandController = {
         res.status(400).json({
           status: 'error',
           message: 'Некоректний ID бренду',
-          errors: paramsValidation.error.errors
+          errors: paramsValidation.error.errors,
         });
         return;
       }
-      
+
       // Валідація тіла запиту
       const bodyValidation = updateBrandSchema.safeParse(req.body);
       if (!bodyValidation.success) {
         res.status(400).json({
           status: 'error',
           message: 'Помилка валідації',
-          errors: bodyValidation.error.errors
+          errors: bodyValidation.error.errors,
         });
         return;
       }
 
       // Ensure logo is undefined if null to match UpdateBrandData type
-      const updateData = { ...bodyValidation.data, logo: bodyValidation.data.logo ?? undefined };
+      const updateData = {
+        ...bodyValidation.data,
+        logo: bodyValidation.data.logo ?? undefined,
+      };
       const { brand } = await brandService.updateBrand(
-        paramsValidation.data.id, 
+        paramsValidation.data.id,
         updateData
       );
-      
+
       res.status(200).json({
         status: 'success',
-        data: { brand }
+        data: { brand },
       });
     } catch (error: any) {
       logger.error(`Помилка оновлення бренду: ${error.message}`);
-      
+
       if (error.message.includes('не знайдено')) {
         res.status(404).json({
           status: 'error',
-          message: 'Бренд не знайдено'
+          message: 'Бренд не знайдено',
         });
       } else if (error.message.includes('вже існує')) {
         res.status(409).json({
           status: 'error',
-          message: error.message
+          message: error.message,
         });
       } else {
         res.status(500).json({
           status: 'error',
-          message: 'Не вдалося оновити бренд'
+          message: 'Не вдалося оновити бренд',
         });
       }
     }
@@ -112,34 +115,34 @@ export const brandController = {
         res.status(400).json({
           status: 'error',
           message: 'Некоректний ID бренду',
-          errors: paramsValidation.error.errors
+          errors: paramsValidation.error.errors,
         });
         return;
       }
-      
+
       const result = await brandService.deleteBrand(paramsValidation.data.id);
-      
+
       res.status(200).json({
         status: 'success',
-        message: result.message
+        message: result.message,
       });
     } catch (error: any) {
       logger.error(`Помилка видалення бренду: ${error.message}`);
-      
+
       if (error.message.includes('не знайдено')) {
         res.status(404).json({
           status: 'error',
-          message: 'Бренд не знайдено'
+          message: 'Бренд не знайдено',
         });
       } else if (error.message.includes('неможливо видалити')) {
         res.status(400).json({
           status: 'error',
-          message: error.message
+          message: error.message,
         });
       } else {
         res.status(500).json({
           status: 'error',
-          message: 'Не вдалося видалити бренд'
+          message: 'Не вдалося видалити бренд',
         });
       }
     }
@@ -153,33 +156,33 @@ export const brandController = {
         res.status(400).json({
           status: 'error',
           message: 'Некоректний ідентифікатор бренду',
-          errors: paramsValidation.error.errors
+          errors: paramsValidation.error.errors,
         });
         return;
       }
-      
+
       // Визначаємо, чи це числовий ID, чи slug
       const { idOrSlug } = paramsValidation.data;
       const param = /^\d+$/.test(idOrSlug) ? Number(idOrSlug) : idOrSlug;
-      
+
       const { brand } = await brandService.getBrand(param);
-      
+
       res.status(200).json({
         status: 'success',
-        data: { brand }
+        data: { brand },
       });
     } catch (error: any) {
       logger.error(`Помилка отримання бренду: ${error.message}`);
-      
+
       if (error.message.includes('не знайдено')) {
         res.status(404).json({
           status: 'error',
-          message: 'Бренд не знайдено'
+          message: 'Бренд не знайдено',
         });
       } else {
         res.status(500).json({
           status: 'error',
-          message: 'Не вдалося отримати бренд'
+          message: 'Не вдалося отримати бренд',
         });
       }
     }
@@ -193,27 +196,43 @@ export const brandController = {
         res.status(400).json({
           status: 'error',
           message: 'Некоректні параметри запиту',
-          errors: queryValidation.error.errors
+          errors: queryValidation.error.errors,
         });
         return;
       }
-      
+
       const filters = queryValidation.data;
-      const result = await brandService.getBrands(filters);
-      
+      const result = await brandService.getBrands();
+
       res.status(200).json({
         status: 'success',
-        data: result
+        data: result,
       });
     } catch (error: any) {
       logger.error(`Помилка отримання списку брендів: ${error.message}`);
       res.status(500).json({
         status: 'error',
-        message: 'Не вдалося отримати список брендів'
+        message: 'Не вдалося отримати список брендів',
       });
     }
   },
+  // Додайте цей метод у brandController
+  async getAllBrands(req: Request, res: Response): Promise<void> {
+    try {
+      const { brands } = await brandService.getAllBrands();
 
+      res.status(200).json({
+        status: 'success',
+        data: { brands },
+      });
+    } catch (error: any) {
+      logger.error(`Помилка отримання всіх брендів: ${error.message}`);
+      res.status(500).json({
+        status: 'error',
+        message: 'Не вдалося отримати список брендів',
+      });
+    }
+  },
   async getPopularBrands(req: Request, res: Response): Promise<void> {
     try {
       // Валідація параметрів запиту
@@ -222,24 +241,24 @@ export const brandController = {
         res.status(400).json({
           status: 'error',
           message: 'Некоректні параметри запиту',
-          errors: queryValidation.error.errors
+          errors: queryValidation.error.errors,
         });
         return;
       }
-      
+
       const { limit } = queryValidation.data;
       const { brands } = await brandService.getPopularBrands(limit);
-      
+
       res.status(200).json({
         status: 'success',
-        data: { brands }
+        data: { brands },
       });
     } catch (error: any) {
       logger.error(`Помилка отримання популярних брендів: ${error.message}`);
       res.status(500).json({
         status: 'error',
-        message: 'Не вдалося отримати список популярних брендів'
+        message: 'Не вдалося отримати список популярних брендів',
       });
     }
-  }
+  },
 };

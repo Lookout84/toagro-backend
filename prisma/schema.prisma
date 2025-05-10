@@ -194,7 +194,7 @@ model Listing {
   active      Boolean       @default(true)
   images      String[]
   views       Int           @default(0)
-  condition   ItemCondition @default(USED) // Нове поле: новий чи вживаний
+  condition   ItemCondition @default(used) // Нове поле: новий чи вживаний
   brandId     Int? // Нове поле для зв'язку з моделлю Brand
   brand       Brand?        @relation(fields: [brandId], references: [id]) // Зв'язок з брендом
   user        User          @relation(fields: [userId], references: [id])
@@ -320,6 +320,6 @@ enum CampaignStatus {
 }
 
 enum ItemCondition {
-  NEW
-  USED
+  new
+  used
 }
