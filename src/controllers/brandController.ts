@@ -1,35 +1,24 @@
 import { Request, Response } from 'express';
 import { brandService } from '../services/brandService';
-// import { validateRequestBody } from '../middleware/validation';
 import { logger } from '../utils/logger';
-import { z } from 'zod';
-
-// Validation schemas
-const createBrandSchema = z.object({
-  name: z.string().min(2, 'Назва бренду повинна містити мінімум 2 символи'),
-  description: z.string().optional(),
-  logo: z.string().optional(),
-  active: z.boolean().optional(),
-  popular: z.boolean().optional()
-});
-
-const updateBrandSchema = z.object({
-  name: z.string().min(2, 'Назва бренду повинна містити мінімум 2 символи').optional(),
-  description: z.string().optional(),
-  logo: z.string().optional(),
-  active: z.boolean().optional(),
-  popular: z.boolean().optional()
-});
+import { 
+  createBrandSchema, 
+  updateBrandSchema,
+  getBrandsQuerySchema,
+  getPopularBrandsQuerySchema,
+  getBrandParamSchema,
+  brandIdParamSchema
+} from '../schemas/brandSchema';
 
 export const brandController = {
   async createBrand(req: Request, res: Response): Promise<void> {
     try {
-      // Validate request body
+      // Валідація тіла запиту з використанням схеми
       const validationResult = createBrandSchema.safeParse(req.body);
       if (!validationResult.success) {
         res.status(400).json({
           status: 'error',
-          message: 'Validation error',
+          message: 'Помилка валідації',
           errors: validationResult.error.errors
         });
         return;
@@ -42,7 +31,7 @@ export const brandController = {
         data: { brand }
       });
     } catch (error: any) {
-      logger.error(`Create brand error: ${error.message}`);
+      logger.error(`Помилка створення бренду: ${error.message}`);
       
       if (error.message.includes('вже існує')) {
         res.status(409).json({
@@ -60,27 +49,41 @@ export const brandController = {
 
   async updateBrand(req: Request, res: Response): Promise<void> {
     try {
-      const { id } = req.params;
-      
-      // Validate request body
-      const validationResult = updateBrandSchema.safeParse(req.body);
-      if (!validationResult.success) {
+      // Валідація параметра ID
+      const paramsValidation = brandIdParamSchema.safeParse(req.params);
+      if (!paramsValidation.success) {
         res.status(400).json({
           status: 'error',
-          message: 'Validation error',
-          errors: validationResult.error.errors
+          message: 'Некоректний ID бренду',
+          errors: paramsValidation.error.errors
+        });
+        return;
+      }
+      
+      // Валідація тіла запиту
+      const bodyValidation = updateBrandSchema.safeParse(req.body);
+      if (!bodyValidation.success) {
+        res.status(400).json({
+          status: 'error',
+          message: 'Помилка валідації',
+          errors: bodyValidation.error.errors
         });
         return;
       }
 
-      const { brand } = await brandService.updateBrand(Number(id), validationResult.data);
+      // Ensure logo is undefined if null to match UpdateBrandData type
+      const updateData = { ...bodyValidation.data, logo: bodyValidation.data.logo ?? undefined };
+      const { brand } = await brandService.updateBrand(
+        paramsValidation.data.id, 
+        updateData
+      );
       
       res.status(200).json({
         status: 'success',
         data: { brand }
       });
     } catch (error: any) {
-      logger.error(`Update brand error: ${error.message}`);
+      logger.error(`Помилка оновлення бренду: ${error.message}`);
       
       if (error.message.includes('не знайдено')) {
         res.status(404).json({
@@ -103,22 +106,32 @@ export const brandController = {
 
   async deleteBrand(req: Request, res: Response): Promise<void> {
     try {
-      const { id } = req.params;
-      const result = await brandService.deleteBrand(Number(id));
+      // Валідація параметра ID
+      const paramsValidation = brandIdParamSchema.safeParse(req.params);
+      if (!paramsValidation.success) {
+        res.status(400).json({
+          status: 'error',
+          message: 'Некоректний ID бренду',
+          errors: paramsValidation.error.errors
+        });
+        return;
+      }
+      
+      const result = await brandService.deleteBrand(paramsValidation.data.id);
       
       res.status(200).json({
         status: 'success',
         message: result.message
       });
     } catch (error: any) {
-      logger.error(`Delete brand error: ${error.message}`);
+      logger.error(`Помилка видалення бренду: ${error.message}`);
       
       if (error.message.includes('не знайдено')) {
         res.status(404).json({
           status: 'error',
           message: 'Бренд не знайдено'
         });
-      } else if (error.message.includes("неможливо видалити")) {
+      } else if (error.message.includes('неможливо видалити')) {
         res.status(400).json({
           status: 'error',
           message: error.message
@@ -134,9 +147,19 @@ export const brandController = {
 
   async getBrand(req: Request, res: Response): Promise<void> {
     try {
-      const { idOrSlug } = req.params;
+      // Валідація параметра idOrSlug
+      const paramsValidation = getBrandParamSchema.safeParse(req.params);
+      if (!paramsValidation.success) {
+        res.status(400).json({
+          status: 'error',
+          message: 'Некоректний ідентифікатор бренду',
+          errors: paramsValidation.error.errors
+        });
+        return;
+      }
       
-      // Determine if id is numeric or slug
+      // Визначаємо, чи це числовий ID, чи slug
+      const { idOrSlug } = paramsValidation.data;
       const param = /^\d+$/.test(idOrSlug) ? Number(idOrSlug) : idOrSlug;
       
       const { brand } = await brandService.getBrand(param);
@@ -146,7 +169,7 @@ export const brandController = {
         data: { brand }
       });
     } catch (error: any) {
-      logger.error(`Get brand error: ${error.message}`);
+      logger.error(`Помилка отримання бренду: ${error.message}`);
       
       if (error.message.includes('не знайдено')) {
         res.status(404).json({
@@ -164,27 +187,18 @@ export const brandController = {
 
   async getBrands(req: Request, res: Response): Promise<void> {
     try {
-      const {
-        search,
-        active,
-        popular,
-        page = '1',
-        limit = '50',
-        sortBy = 'name',
-        sortOrder = 'asc'
-      } = req.query;
+      // Валідація параметрів запиту
+      const queryValidation = getBrandsQuerySchema.safeParse(req.query);
+      if (!queryValidation.success) {
+        res.status(400).json({
+          status: 'error',
+          message: 'Некоректні параметри запиту',
+          errors: queryValidation.error.errors
+        });
+        return;
+      }
       
-      // Parse query parameters
-      const filters = {
-        search: search as string | undefined,
-        active: active === 'true' ? true : active === 'false' ? false : undefined,
-        popular: popular === 'true' ? true : popular === 'false' ? false : undefined,
-        page: parseInt(page as string, 10),
-        limit: parseInt(limit as string, 10),
-        sortBy: (sortBy as 'name' | 'createdAt'),
-        sortOrder: (sortOrder as 'asc' | 'desc')
-      };
-      
+      const filters = queryValidation.data;
       const result = await brandService.getBrands(filters);
       
       res.status(200).json({
@@ -192,7 +206,7 @@ export const brandController = {
         data: result
       });
     } catch (error: any) {
-      logger.error(`Get brands error: ${error.message}`);
+      logger.error(`Помилка отримання списку брендів: ${error.message}`);
       res.status(500).json({
         status: 'error',
         message: 'Не вдалося отримати список брендів'
@@ -202,17 +216,26 @@ export const brandController = {
 
   async getPopularBrands(req: Request, res: Response): Promise<void> {
     try {
-      const { limit = '10' } = req.query;
-      const parsedLimit = parseInt(limit as string, 10);
+      // Валідація параметрів запиту
+      const queryValidation = getPopularBrandsQuerySchema.safeParse(req.query);
+      if (!queryValidation.success) {
+        res.status(400).json({
+          status: 'error',
+          message: 'Некоректні параметри запиту',
+          errors: queryValidation.error.errors
+        });
+        return;
+      }
       
-      const { brands } = await brandService.getPopularBrands(parsedLimit);
+      const { limit } = queryValidation.data;
+      const { brands } = await brandService.getPopularBrands(limit);
       
       res.status(200).json({
         status: 'success',
         data: { brands }
       });
     } catch (error: any) {
-      logger.error(`Get popular brands error: ${error.message}`);
+      logger.error(`Помилка отримання популярних брендів: ${error.message}`);
       res.status(500).json({
         status: 'error',
         message: 'Не вдалося отримати список популярних брендів'

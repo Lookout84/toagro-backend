@@ -1,16 +1,18 @@
-import express from 'express';
+import { Router } from 'express';
 import { brandController } from '../controllers/brandController';
 import { authenticate } from '../middleware/auth';
-import { isAdmin } from '../middleware/roleCheck';
+import { isAdmin } from '../middleware/auth';
+import { apiLimiter } from '../middleware/rateLimiter';
 
-const router = express.Router();
+const router = Router();
 
-// Public routes
-router.get('/', brandController.getBrands);
-router.get('/popular', brandController.getPopularBrands);
-router.get('/:idOrSlug', brandController.getBrand);
+// Публічні маршрути (доступні всім)
+router.get('/', apiLimiter, brandController.getBrands);
+router.get('/popular', apiLimiter, brandController.getPopularBrands);
+router.get('/:idOrSlug', apiLimiter, brandController.getBrand);
 
-// Admin-only routes
+// Маршрути, що потребують прав адміністратора
+router.use(authenticate, isAdmin);
 router.post('/', authenticate, isAdmin, brandController.createBrand);
 router.put('/:id', authenticate, isAdmin, brandController.updateBrand);
 router.delete('/:id', authenticate, isAdmin, brandController.deleteBrand);

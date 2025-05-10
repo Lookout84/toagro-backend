@@ -31,7 +31,7 @@ import categoryRoutes from './routes/categories';
 import notificationRoutes from './routes/notifications';
 import queueRoutes from './routes/queues';
 import campaignRoutes from './routes/campaigns';
-import brandRoutes from './routes/brandRoutes';
+import brandRoutes from './routes/brand';
 
 // Функція для перевірки доступності порту
 const isPortAvailable = (port: number): Promise<boolean> => {
