@@ -173,6 +173,7 @@ model User {
   bulkNotifications   BulkNotification[]     @relation()
   sentNotifications   BulkNotification[]     @relation("SenderNotifications")
   createdCampaigns    Campaign[]
+  UserActivity        UserActivity[]
 }
 
 enum UserRole {
@@ -180,11 +181,25 @@ enum UserRole {
   ADMIN
 }
 
+// Example model to add:
+
+model UserActivity {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  user         User     @relation(fields: [userId], references: [id])
+  action       String
+  resourceId   Int
+  resourceType String
+  metadata     Json?
+  createdAt    DateTime @default(now())
+}
+
 model Listing {
   id          Int           @id @default(autoincrement())
   title       String
   description String
   price       Float
+  currency    Currency @default(UAH) // Додаємо нове поле з дефолтним значенням UAH
   location    String
   category    String // Залишимо поле для зворотної сумісності
   categoryId  Int? // Нове поле для зв'язку з моделлю Category
@@ -209,7 +224,7 @@ model Brand {
   description String?
   logo        String?
   active      Boolean   @default(true)
-  popular     Boolean   @default(false)  // Для відображення популярних брендів
+  popular     Boolean   @default(false) // Для відображення популярних брендів
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   listings    Listing[]
@@ -322,4 +337,11 @@ enum CampaignStatus {
 enum ItemCondition {
   new
   used
+}
+
+// Додайте enum для валюти
+enum Currency {
+  UAH
+  USD
+  EUR
 }

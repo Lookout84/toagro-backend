@@ -20,14 +20,18 @@ class RabbitMQService {
   constructor() {
     // Формування URL підключення з урахуванням креденшалів
     const { rabbitmqUrl, rabbitmqUser, rabbitmqPassword } = config;
-    
+
+    if (!rabbitmqUrl) {
+      throw new Error('RabbitMQ URL is not defined in configuration');
+    }
+
     // Парсимо URL для додавання користувача і пароля, якщо вони вказані
     const urlObj = new URL(rabbitmqUrl);
     if (rabbitmqUser && rabbitmqPassword) {
       urlObj.username = rabbitmqUser;
       urlObj.password = rabbitmqPassword;
     }
-    
+
     this.url = urlObj.toString();
   }
 
@@ -38,48 +42,48 @@ class RabbitMQService {
     if (this.connection && this.channel) {
       return; // Вже підключено
     }
-    
+
     if (this.connecting) {
       return; // Вже в процесі підключення
     }
-    
+
     this.connecting = true;
-    
+
     try {
       // Підключаємося до RabbitMQ
       this.connection = await amqp.connect(this.url);
-      
+
       // Налаштовуємо обробники подій
       this.connection.on('error', (err) => {
         logger.error(`RabbitMQ connection error: ${err.message}`);
         this.reconnect();
       });
-      
+
       this.connection.on('close', () => {
         logger.info('RabbitMQ connection closed');
         this.reconnect();
       });
-      
+
       // Створюємо канал
       this.channel = await this.connection.createChannel();
-      
+
       // Налаштовуємо обробники подій для каналу
       this.channel.on('error', (err) => {
         logger.error(`RabbitMQ channel error: ${err.message}`);
         this.recreateChannel();
       });
-      
+
       this.channel.on('close', () => {
         logger.info('RabbitMQ channel closed');
         this.recreateChannel();
       });
-      
+
       // Запускаємо періодичну перевірку з'єднання
       this.startHealthCheck();
-      
+
       // Відновлюємо споживачів
       await this.restoreConsumers();
-      
+
       logger.info('Connected to RabbitMQ');
     } catch (error) {
       logger.error(`Failed to connect to RabbitMQ: ${error}`);
@@ -97,16 +101,16 @@ class RabbitMQService {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
     }
-    
+
     // Очищаємо посилання на з'єднання та канал
     this.connection = null;
     this.channel = null;
-    
+
     // Зупиняємо перевірку з'єднання
     this.stopHealthCheck();
-    
+
     logger.info(`Attempting to reconnect to RabbitMQ in ${delay}ms...`);
-    
+
     // Налаштовуємо таймер для повторного підключення
     this.reconnectTimer = setTimeout(async () => {
       try {
@@ -126,7 +130,7 @@ class RabbitMQService {
       await this.connect();
       return;
     }
-    
+
     try {
       // Закриваємо попередній канал, якщо він існує
       if (this.channel) {
@@ -136,24 +140,24 @@ class RabbitMQService {
           // Ігноруємо помилки закриття
         }
       }
-      
+
       // Створюємо новий канал
       this.channel = await this.connection.createChannel();
-      
+
       // Налаштовуємо обробники подій
       this.channel.on('error', (err) => {
         logger.error(`RabbitMQ channel error: ${err.message}`);
         this.recreateChannel();
       });
-      
+
       this.channel.on('close', () => {
         logger.info('RabbitMQ channel closed');
         this.recreateChannel();
       });
-      
+
       // Відновлюємо споживачів
       await this.restoreConsumers();
-      
+
       logger.info('RabbitMQ channel recreated');
     } catch (error) {
       logger.error(`Failed to recreate RabbitMQ channel: ${error}`);
@@ -166,19 +170,21 @@ class RabbitMQService {
    */
   private async restoreConsumers(): Promise<void> {
     if (!this.channel) return;
-    
+
     try {
       for (const [queue, handler] of this.consumers.entries()) {
         try {
           // Оголошуємо чергу заново
           await this.channel.assertQueue(queue, { durable: true });
-          
+
           // Налаштовуємо споживання
           await this.setupConsumer(queue, handler);
-          
+
           logger.info(`Consumer restored for queue: ${queue}`);
         } catch (error) {
-          logger.error(`Failed to restore consumer for queue ${queue}: ${error}`);
+          logger.error(
+            `Failed to restore consumer for queue ${queue}: ${error}`
+          );
         }
       }
     } catch (error) {
@@ -194,14 +200,14 @@ class RabbitMQService {
     if (this.healthCheckTimer) {
       clearTimeout(this.healthCheckTimer);
     }
-    
+
     // Запускаємо періодичну перевірку
     this.healthCheckTimer = setInterval(async () => {
       try {
         if (!this.channel || !this.connection) {
           throw new Error('Channel or connection is null');
         }
-        
+
         // Перевіряємо з'єднання з RabbitMQ
         if (this.channel.checkQueue) {
           // Перевіряємо чи існує тестова черга
@@ -228,14 +234,14 @@ class RabbitMQService {
    * Оголошення черги
    */
   async assertQueue(
-    queue: string, 
+    queue: string,
     options: Options.AssertQueue = { durable: true }
   ): Promise<void> {
     try {
       if (!this.channel) {
         await this.connect();
       }
-      
+
       await this.channel!.assertQueue(queue, options);
       logger.debug(`Queue ${queue} asserted`);
     } catch (error) {
@@ -248,7 +254,7 @@ class RabbitMQService {
    * Оголошення обміну (exchange)
    */
   async assertExchange(
-    exchange: string, 
+    exchange: string,
     type: string = 'direct',
     options: Options.AssertExchange = { durable: true }
   ): Promise<void> {
@@ -256,7 +262,7 @@ class RabbitMQService {
       if (!this.channel) {
         await this.connect();
       }
-      
+
       await this.channel!.assertExchange(exchange, type, options);
       logger.debug(`Exchange ${exchange} of type ${type} asserted`);
     } catch (error) {
@@ -269,19 +275,23 @@ class RabbitMQService {
    * Прив'язка черги до обміну
    */
   async bindQueue(
-    queue: string, 
-    exchange: string, 
+    queue: string,
+    exchange: string,
     routingKey: string
   ): Promise<void> {
     try {
       if (!this.channel) {
         await this.connect();
       }
-      
+
       await this.channel!.bindQueue(queue, exchange, routingKey);
-      logger.debug(`Queue ${queue} bound to exchange ${exchange} with routing key ${routingKey}`);
+      logger.debug(
+        `Queue ${queue} bound to exchange ${exchange} with routing key ${routingKey}`
+      );
     } catch (error) {
-      logger.error(`Failed to bind queue ${queue} to exchange ${exchange}: ${error}`);
+      logger.error(
+        `Failed to bind queue ${queue} to exchange ${exchange}: ${error}`
+      );
       throw error;
     }
   }
@@ -290,7 +300,7 @@ class RabbitMQService {
    * Відправка повідомлення у чергу
    */
   async sendToQueue(
-    queue: string, 
+    queue: string,
     content: any,
     options: Options.Publish = { persistent: true }
   ): Promise<boolean> {
@@ -298,18 +308,18 @@ class RabbitMQService {
       if (!this.channel) {
         await this.connect();
       }
-      
+
       // Перевіряємо чи існує черга
       await this.assertQueue(queue);
-      
+
       // Перетворюємо дані в буфер, якщо потрібно
-      const buffer = Buffer.isBuffer(content) 
-        ? content 
+      const buffer = Buffer.isBuffer(content)
+        ? content
         : Buffer.from(JSON.stringify(content));
-      
+
       // Відправляємо повідомлення в чергу
       const result = this.channel!.sendToQueue(queue, buffer, options);
-      
+
       logger.debug(`Message sent to queue ${queue}`);
       return result;
     } catch (error) {
@@ -322,8 +332,8 @@ class RabbitMQService {
    * Відправка повідомлення в обмін
    */
   async publishToExchange(
-    exchange: string, 
-    routingKey: string, 
+    exchange: string,
+    routingKey: string,
     content: any,
     options: Options.Publish = { persistent: true }
   ): Promise<boolean> {
@@ -331,19 +341,28 @@ class RabbitMQService {
       if (!this.channel) {
         await this.connect();
       }
-      
+
       // Перетворюємо дані в буфер, якщо потрібно
-      const buffer = Buffer.isBuffer(content) 
-        ? content 
+      const buffer = Buffer.isBuffer(content)
+        ? content
         : Buffer.from(JSON.stringify(content));
-      
+
       // Відправляємо повідомлення в обмін
-      const result = this.channel!.publish(exchange, routingKey, buffer, options);
-      
-      logger.debug(`Message published to exchange ${exchange} with routing key ${routingKey}`);
+      const result = this.channel!.publish(
+        exchange,
+        routingKey,
+        buffer,
+        options
+      );
+
+      logger.debug(
+        `Message published to exchange ${exchange} with routing key ${routingKey}`
+      );
       return result;
     } catch (error) {
-      logger.error(`Failed to publish message to exchange ${exchange}: ${error}`);
+      logger.error(
+        `Failed to publish message to exchange ${exchange}: ${error}`
+      );
       return false;
     }
   }
@@ -351,35 +370,40 @@ class RabbitMQService {
   /**
    * Налаштування споживача для черги
    */
-  private async setupConsumer(queue: string, handler: MessageHandler): Promise<string> {
+  private async setupConsumer(
+    queue: string,
+    handler: MessageHandler
+  ): Promise<string> {
     if (!this.channel) {
       throw new Error('Channel is not initialized');
     }
-    
+
     const { consumerTag } = await this.channel.consume(
-      queue, 
+      queue,
       async (msg: ConsumeMessage | null) => {
         if (msg) {
           try {
             // Розбираємо вміст повідомлення
             const content = JSON.parse(msg.content.toString());
-            
+
             // Обробляємо повідомлення
             await handler(content);
-            
+
             // Підтверджуємо обробку повідомлення
             this.channel!.ack(msg);
             logger.debug(`Message from queue ${queue} processed successfully`);
           } catch (error) {
-            logger.error(`Error processing message from queue ${queue}: ${error}`);
-            
+            logger.error(
+              `Error processing message from queue ${queue}: ${error}`
+            );
+
             // Повертаємо повідомлення в чергу, якщо обробка не вдалася
             this.channel!.nack(msg, false, true);
           }
         }
       }
     );
-    
+
     return consumerTag;
   }
 
@@ -391,16 +415,16 @@ class RabbitMQService {
       if (!this.channel) {
         await this.connect();
       }
-      
+
       // Перевіряємо чи існує черга
       await this.assertQueue(queue);
-      
+
       // Зберігаємо обробник для можливого відновлення
       this.consumers.set(queue, handler);
-      
+
       // Налаштовуємо споживання
       await this.setupConsumer(queue, handler);
-      
+
       logger.info(`Consumer set up for queue ${queue}`);
     } catch (error) {
       logger.error(`Failed to set up consumer for queue ${queue}: ${error}`);
@@ -416,7 +440,7 @@ class RabbitMQService {
       if (!this.channel) {
         await this.connect();
       }
-      
+
       const { messageCount } = await this.channel!.purgeQueue(queue);
       logger.info(`Queue ${queue} purged, ${messageCount} messages removed`);
       return messageCount;
@@ -429,15 +453,18 @@ class RabbitMQService {
   /**
    * Видалення черги
    */
-  async deleteQueue(queue: string, options: Options.DeleteQueue = { ifEmpty: false }): Promise<number> {
+  async deleteQueue(
+    queue: string,
+    options: Options.DeleteQueue = { ifEmpty: false }
+  ): Promise<number> {
     try {
       if (!this.channel) {
         await this.connect();
       }
-      
+
       // Видаляємо обробник, якщо є
       this.consumers.delete(queue);
-      
+
       const { messageCount } = await this.channel!.deleteQueue(queue, options);
       logger.info(`Queue ${queue} deleted, ${messageCount} messages removed`);
       return messageCount;
@@ -450,12 +477,15 @@ class RabbitMQService {
   /**
    * Видалення обміну
    */
-  async deleteExchange(exchange: string, options: Options.DeleteExchange = {}): Promise<void> {
+  async deleteExchange(
+    exchange: string,
+    options: Options.DeleteExchange = {}
+  ): Promise<void> {
     try {
       if (!this.channel) {
         await this.connect();
       }
-      
+
       await this.channel!.deleteExchange(exchange, options);
       logger.info(`Exchange ${exchange} deleted`);
     } catch (error) {
@@ -472,7 +502,7 @@ class RabbitMQService {
       if (!this.channel) {
         await this.connect();
       }
-      
+
       return await this.channel!.checkQueue(queue);
     } catch (error) {
       logger.error(`Failed to check queue ${queue}: ${error}`);
@@ -493,13 +523,13 @@ class RabbitMQService {
   async close(): Promise<void> {
     // Зупиняємо перевірку з'єднання
     this.stopHealthCheck();
-    
+
     // Скасовуємо таймер повторного підключення
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    
+
     try {
       // Закриваємо канал
       if (this.channel) {
@@ -507,7 +537,7 @@ class RabbitMQService {
         this.channel = null;
         logger.info('RabbitMQ channel closed');
       }
-      
+
       // Закриваємо з'єднання
       if (this.connection) {
         await this.connection.close();
@@ -517,6 +547,70 @@ class RabbitMQService {
     } catch (error) {
       logger.error(`Error closing RabbitMQ connection: ${error}`);
     }
+  }
+  // Add this function to src/utils/rabbitmq.ts
+
+  /**
+   * Safe method to publish to queue with automatic reconnection attempts
+   */
+  async publishWithRetry(
+    exchange: string,
+    routingKey: string,
+    content: any,
+    options: Options.Publish = { persistent: true },
+    maxRetries: number = 3
+  ): Promise<boolean> {
+    let attempts = 0;
+
+    while (attempts < maxRetries) {
+      try {
+        if (!this.channel || !this.isConnected()) {
+          await this.connect();
+        }
+
+        const buffer = Buffer.isBuffer(content)
+          ? content
+          : Buffer.from(JSON.stringify(content));
+
+        const result = this.channel!.publish(
+          exchange,
+          routingKey,
+          buffer,
+          options
+        );
+
+        if (result) {
+          logger.debug(
+            `Message published to exchange ${exchange} with routing key ${routingKey}`
+          );
+          return true;
+        } else {
+          logger.warn(`Failed to publish message (buffer full), retrying...`);
+          await new Promise((resolve) =>
+            setTimeout(resolve, 1000 * Math.pow(2, attempts))
+          );
+          attempts++;
+        }
+      } catch (error) {
+        logger.error(
+          `Error publishing message (attempt ${attempts + 1}/${maxRetries}): ${error}`
+        );
+        await new Promise((resolve) =>
+          setTimeout(resolve, 1000 * Math.pow(2, attempts))
+        );
+        attempts++;
+
+        // Try to reconnect
+        if (!this.isConnected()) {
+          await this.connect().catch(() => {
+            // Connection failed, will retry on next iteration
+          });
+        }
+      }
+    }
+
+    logger.error(`Failed to publish message after ${maxRetries} attempts`);
+    return false;
   }
 }
 

@@ -21,23 +21,23 @@
 //   io.use(async (socket, next) => {
 //     try {
 //       const token = socket.handshake.auth.token;
-      
+
 //       if (!token) {
 //         return next(new Error('Authentication token is required'));
 //       }
-      
+
 //       const decoded = jwt.verify(token, config.jwtSecret) as TokenPayload;
-      
+
 //       // Check if user exists
 //       const user = await prisma.user.findUnique({
 //         where: { id: decoded.userId },
 //         select: { id: true }
 //       });
-      
+
 //       if (!user) {
 //         return next(new Error('User not found'));
 //       }
-      
+
 //       socket.data.userId = user.id;
 //       next();
 //     } catch (error) {
@@ -48,19 +48,19 @@
 
 //   io.on('connection', (socket) => {
 //     const userId = socket.data.userId;
-    
+
 //     // Store user connection
 //     connectedUsers.set(userId, socket.id);
 //     logger.info(`User connected: ${userId}, socketId: ${socket.id}`);
-    
+
 //     // Update online status
 //     socket.broadcast.emit('user:status', { userId, status: 'online' });
-    
+
 //     // Listen for incoming messages
 //     socket.on('message:send', async (data) => {
 //       try {
 //         const { receiverId, content, listingId } = data;
-        
+
 //         // Save message to database
 //         const message = await prisma.message.create({
 //           data: {
@@ -79,13 +79,13 @@
 //             },
 //           },
 //         });
-        
+
 //         // Send to recipient if online
 //         const recipientSocketId = connectedUsers.get(receiverId);
 //         if (recipientSocketId) {
 //           io.to(recipientSocketId).emit('message:receive', message);
 //         }
-        
+
 //         // Send back to sender
 //         socket.emit('message:sent', message);
 //       } catch (error) {
@@ -93,36 +93,36 @@
 //         socket.emit('message:error', { error: 'Failed to send message' });
 //       }
 //     });
-    
+
 //     // Listen for "typing" indicator
 //     socket.on('typing:start', (data) => {
 //       const { receiverId } = data;
 //       const recipientSocketId = connectedUsers.get(receiverId);
-      
+
 //       if (recipientSocketId) {
 //         io.to(recipientSocketId).emit('typing:update', { userId, status: true });
 //       }
 //     });
-    
+
 //     socket.on('typing:stop', (data) => {
 //       const { receiverId } = data;
 //       const recipientSocketId = connectedUsers.get(receiverId);
-      
+
 //       if (recipientSocketId) {
 //         io.to(recipientSocketId).emit('typing:update', { userId, status: false });
 //       }
 //     });
-    
+
 //     // Handle disconnection
 //     socket.on('disconnect', () => {
 //       connectedUsers.delete(userId);
 //       logger.info(`User disconnected: ${userId}`);
-      
+
 //       // Update online status
 //       socket.broadcast.emit('user:status', { userId, status: 'offline' });
 //     });
 //   });
-  
+
 //   logger.info('Socket.io server initialized');
 // };
 
@@ -166,24 +166,24 @@ class SocketManager {
   //   this.io.use(async (socket: Socket, next: (err?: Error) => void) => {
   //     try {
   //       const token = socket.handshake.auth.token;
-        
+
   //       if (!token) {
   //         logger.warn('Authentication attempt without token');
   //         return next(new Error('Authentication token is required'));
   //       }
-        
+
   //       const decoded = jwt.verify(token, config.jwtSecret) as TokenPayload;
-        
+
   //       const user = await prisma.user.findUnique({
   //         where: { id: decoded.userId },
   //         select: { id: true, isActive: true }
   //       });
-        
+
   //       if (!user || !user.isActive) {
   //         logger.warn(`User not found or inactive: ${decoded.userId}`);
   //         return next(new Error('User not found or inactive'));
   //       }
-        
+
   //       socket.data.userId = user.id;
   //       next();
   //     } catch (error) {
@@ -197,25 +197,25 @@ class SocketManager {
     this.io.use(async (socket: Socket, next: (err?: Error) => void) => {
       try {
         const token = socket.handshake.auth.token;
-        
+
         if (!token) {
           logger.warn('Authentication attempt without token');
           return next(new Error('Authentication token is required'));
         }
-        
+
         const decoded = jwt.verify(token, config.jwtSecret) as TokenPayload;
-        
+
         // Перевіряємо лише існування користувача (без isActive)
         const user = await prisma.user.findUnique({
           where: { id: decoded.userId },
-          select: { id: true } // Видалено isActive
+          select: { id: true }, // Видалено isActive
         });
-        
+
         if (!user) {
           logger.warn(`User not found: ${decoded.userId}`);
           return next(new Error('User not found'));
         }
-        
+
         socket.data.userId = user.id;
         next();
       } catch (error) {
@@ -228,28 +228,28 @@ class SocketManager {
   private setupEventHandlers() {
     this.io.on('connection', (socket: Socket) => {
       const userId = socket.data.userId;
-      
+
       // Store user connection
       this.connectedUsers.set(userId, socket.id);
       logger.info(`User connected: ${userId}, socketId: ${socket.id}`);
-      
+
       // Notify others about online status
       this.io.emit('user:status', { userId, status: 'online' });
-      
+
       // Message handling
       socket.on('message:send', async (data: MessageData) => {
         await this.handleMessage(socket, userId, data);
       });
-      
+
       // Typing indicators
       socket.on('typing:start', (data: TypingData) => {
         this.handleTyping(socket, userId, data.receiverId, true);
       });
-      
+
       socket.on('typing:stop', (data: TypingData) => {
         this.handleTyping(socket, userId, data.receiverId, false);
       });
-      
+
       // Disconnection handler
       socket.on('disconnect', () => {
         this.handleDisconnect(userId);
@@ -257,59 +257,144 @@ class SocketManager {
     });
   }
 
-  private async handleMessage(socket: Socket, senderId: number, data: MessageData) {
+  // private async handleMessage(socket: Socket, senderId: number, data: MessageData) {
+  //   try {
+  //     const { receiverId, content, listingId } = data;
+
+  //     // Validate receiver exists
+  //     const receiver = await prisma.user.findUnique({
+  //       where: { id: receiverId },
+  //       select: { id: true }
+  //     });
+
+  //     if (!receiver) {
+  //       throw new Error('Recipient not found');
+  //     }
+
+  //     const message = await prisma.message.create({
+  //       data: {
+  //         content,
+  //         senderId,
+  //         receiverId,
+  //         listingId,
+  //       },
+  //       include: {
+  //         sender: {
+  //           select: {
+  //             id: true,
+  //             name: true,
+  //             avatar: true,
+  //           },
+  //         },
+  //       },
+  //     });
+
+  //     // Send to recipient if online
+  //     const recipientSocketId = this.connectedUsers.get(receiverId);
+  //     if (recipientSocketId) {
+  //       this.io.to(recipientSocketId).emit('message:receive', message);
+  //     }
+
+  //     // Confirm to sender
+  //     socket.emit('message:sent', message);
+  //   } catch (error) {
+  //     logger.error(`Message handling error for user ${senderId}: ${error}`);
+  //     socket.emit('message:error', { error: 'Failed to send message' });
+  //   }
+  // }
+
+  private async handleMessage(
+    socket: Socket,
+    senderId: number,
+    data: MessageData
+  ) {
     try {
       const { receiverId, content, listingId } = data;
-      
+
       // Validate receiver exists
-      const receiver = await prisma.user.findUnique({
-        where: { id: receiverId },
-        select: { id: true }
-      });
-      
+      const receiver = await prisma.user
+        .findUnique({
+          where: { id: receiverId },
+          select: { id: true },
+        })
+        .catch((error) => {
+          logger.error(`Database error while fetching receiver: ${error}`);
+          throw new Error('Database error occurred');
+        });
+
       if (!receiver) {
         throw new Error('Recipient not found');
       }
-      
-      const message = await prisma.message.create({
-        data: {
-          content,
-          senderId,
-          receiverId,
-          listingId,
-        },
-        include: {
-          sender: {
-            select: {
-              id: true,
-              name: true,
-              avatar: true,
+
+      // Check if listing exists if provided
+      if (listingId) {
+        const listing = await prisma.listing
+          .findUnique({
+            where: { id: listingId },
+          })
+          .catch((error) => {
+            logger.error(`Database error while fetching listing: ${error}`);
+            throw new Error('Database error occurred');
+          });
+
+        if (!listing) {
+          throw new Error('Listing not found');
+        }
+      }
+
+      const message = await prisma.message
+        .create({
+          data: {
+            content,
+            senderId,
+            receiverId,
+            listingId,
+          },
+          include: {
+            sender: {
+              select: {
+                id: true,
+                name: true,
+                avatar: true,
+              },
             },
           },
-        },
-      });
-      
+        })
+        .catch((error) => {
+          logger.error(`Database error while creating message: ${error}`);
+          throw new Error('Failed to save message');
+        });
+
       // Send to recipient if online
       const recipientSocketId = this.connectedUsers.get(receiverId);
       if (recipientSocketId) {
         this.io.to(recipientSocketId).emit('message:receive', message);
       }
-      
+
       // Confirm to sender
       socket.emit('message:sent', message);
     } catch (error) {
-      logger.error(`Message handling error for user ${senderId}: ${error}`);
-      socket.emit('message:error', { error: 'Failed to send message' });
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      logger.error(
+        `Message handling error for user ${senderId}: ${errorMessage}`
+      );
+      socket.emit('message:error', { error: errorMessage });
     }
   }
 
-  private handleTyping(socket: Socket, userId: number, receiverId: number, isTyping: boolean) {
+  private handleTyping(
+    socket: Socket,
+    userId: number,
+    receiverId: number,
+    isTyping: boolean
+  ) {
     try {
       const recipientSocketId = this.connectedUsers.get(receiverId);
       if (recipientSocketId) {
-        this.io.to(recipientSocketId).emit('typing:update', { 
-          userId, 
-          status: isTyping 
+        this.io.to(recipientSocketId).emit('typing:update', {
+          userId,
+          status: isTyping,
         });
       }
     } catch (error) {

@@ -288,6 +288,26 @@
         }
       }
     },
+    "/test-no-validation": {
+      "post": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "content-type",
+            "in": "header",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
     "/": {
       "get": {
         "description": "",
@@ -525,6 +545,13 @@
     "/user/me": {
       "get": {
         "description": "",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "type": "string"
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"

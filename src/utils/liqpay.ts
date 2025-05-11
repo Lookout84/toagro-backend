@@ -16,6 +16,9 @@ export class LiqpayService {
   private readonly privateKey: string;
 
   constructor() {
+    if (!config.liqpayPublicKey || !config.liqpayPrivateKey) {
+      throw new Error('LiqPay public or private key is not defined in the environment configuration.');
+    }
     this.publicKey = config.liqpayPublicKey;
     this.privateKey = config.liqpayPrivateKey;
   }

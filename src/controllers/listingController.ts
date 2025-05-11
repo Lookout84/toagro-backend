@@ -29,11 +29,13 @@ export const listingController = {
         });
         return;
       }
-
       // 2. Валідація даних
       const validationResult = createListingSchema.safeParse(req.body);
       if (!validationResult.success) {
-        logger.warn('Помилка валідації даних:', JSON.stringify(validationResult.error.errors));
+        logger.warn(
+          'Помилка валідації даних:',
+          JSON.stringify(validationResult.error.errors)
+        );
         res.status(400).json({
           status: 'error',
           message: 'Помилка валідації',
@@ -43,7 +45,7 @@ export const listingController = {
       }
 
       // 3. Отримуємо ID користувача з JWT токена
-      const userId = (req as any).user?.id;
+      const userId = req.userId;
       if (!userId) {
         logger.warn('Спроба створення оголошення без автентифікації');
         res.status(401).json({
@@ -51,16 +53,30 @@ export const listingController = {
           message: 'Користувач не автентифікований',
         });
         return;
+        // const userId = (req as any).user?.id;
+        // if (!userId) {
+        //   logger.warn('Спроба створення оголошення без автентифікації');
+        //   res.status(401).json({
+        //     status: 'error',
+        //     message: 'Користувач не автентифікований',
+        //     details: 'ID користувача відсутній в токені',
+        //   });
+        //   return;
       }
 
       // 4. Перетворюємо condition в формат для бази даних (NEW/USED)
-      const condition = validationResult.data.condition === 'new' ? 'NEW' : 'USED';
-      
+      const condition =
+        validationResult.data.condition === 'new' ? 'NEW' : 'USED';
+
+      // Перетворюємо currency в формат для бази даних
+      const currency = validationResult.data.currency || 'UAH'; // Значення за замовчуванням
+
       // 5. Створюємо оголошення
       const { listing } = await listingService.createListing({
         ...validationResult.data,
         userId,
         condition,
+        currency,
       });
 
       // 6. Успішна відповідь
@@ -86,11 +102,14 @@ export const listingController = {
   async updateListing(req: Request, res: Response): Promise<void> {
     try {
       logger.info('Спроба оновлення оголошення');
-      
+
       // 1. Валідація ID оголошення
       const paramsValidation = listingIdParamSchema.safeParse(req.params);
       if (!paramsValidation.success) {
-        logger.warn('Некоректний ID оголошення:', JSON.stringify(paramsValidation.error.errors));
+        logger.warn(
+          'Некоректний ID оголошення:',
+          JSON.stringify(paramsValidation.error.errors)
+        );
         res.status(400).json({
           status: 'error',
           message: 'Некоректний ID оголошення',
@@ -98,13 +117,16 @@ export const listingController = {
         });
         return;
       }
-      
+
       const { id } = paramsValidation.data;
-      
+
       // 2. Валідація даних для оновлення
       const validationResult = updateListingSchema.safeParse(req.body);
       if (!validationResult.success) {
-        logger.warn('Помилка валідації даних для оновлення:', JSON.stringify(validationResult.error.errors));
+        logger.warn(
+          'Помилка валідації даних для оновлення:',
+          JSON.stringify(validationResult.error.errors)
+        );
         res.status(400).json({
           status: 'error',
           message: 'Помилка валідації',
@@ -112,7 +134,7 @@ export const listingController = {
         });
         return;
       }
-      
+
       // 3. Отримуємо ID користувача з JWT токена
       const userId = (req as any).user?.id;
       if (!userId) {
@@ -123,31 +145,38 @@ export const listingController = {
         });
         return;
       }
-      
+
       // 4. Перевіряємо права доступу
       const isOwner = await listingService.isListingOwner(id, userId);
       const isAdmin = (req as any).user?.role === 'ADMIN';
-      
+
       if (!isOwner && !isAdmin) {
-        logger.warn(`Користувач ${userId} намагається оновити чуже оголошення ${id}`);
+        logger.warn(
+          `Користувач ${userId} намагається оновити чуже оголошення ${id}`
+        );
         res.status(403).json({
           status: 'error',
           message: 'У вас немає прав для редагування цього оголошення',
         });
         return;
       }
-      
+
       // 5. Підготовка даних для оновлення
       const updateData: any = { ...validationResult.data };
-      
+
       // Перетворюємо condition в формат для бази даних, якщо він присутній
       if (updateData.condition) {
         updateData.condition = updateData.condition === 'new' ? 'NEW' : 'USED';
       }
+
+      // Перетворюємо currency в формат для бази даних, якщо він присутній
+      if (updateData.currency) {
+        updateData.currency = updateData.currency.toUpperCase();
+      }
       
       // 6. Оновлюємо оголошення
       const { listing } = await listingService.updateListing(id, updateData);
-      
+
       // 7. Успішна відповідь
       logger.info(`Оголошення з ID ${id} успішно оновлено`);
       res.status(200).json({
@@ -157,7 +186,7 @@ export const listingController = {
       });
     } catch (error: any) {
       logger.error(`Помилка оновлення оголошення: ${error.message}`);
-      
+
       if (error.message.includes('не знайдено')) {
         res.status(404).json({
           status: 'error',
@@ -179,11 +208,14 @@ export const listingController = {
   async getListings(req: Request, res: Response): Promise<void> {
     try {
       logger.info('Запит на отримання списку оголошень');
-      
+
       // 1. Валідація параметрів запиту
       const queryValidation = listingQuerySchema.safeParse(req.query);
       if (!queryValidation.success) {
-        logger.warn('Некоректні параметри запиту:', JSON.stringify(queryValidation.error.errors));
+        logger.warn(
+          'Некоректні параметри запиту:',
+          JSON.stringify(queryValidation.error.errors)
+        );
         res.status(400).json({
           status: 'error',
           message: 'Некоректні параметри запиту',
@@ -191,13 +223,15 @@ export const listingController = {
         });
         return;
       }
-      
+
       // 2. Отримання списку оголошень
       const filters = queryValidation.data;
       const result = await listingService.getListings(filters);
-      
+
       // 3. Успішна відповідь
-      logger.info(`Отримано ${result.listings.length} оголошень з ${result.total} загальних`);
+      logger.info(
+        `Отримано ${result.listings.length} оголошень з ${result.total} загальних`
+      );
       res.status(200).json({
         status: 'success',
         data: result,
@@ -218,11 +252,14 @@ export const listingController = {
   async getListing(req: Request, res: Response): Promise<void> {
     try {
       logger.info('Запит на отримання оголошення');
-      
+
       // 1. Валідація параметра ID
       const paramsValidation = listingIdParamSchema.safeParse(req.params);
       if (!paramsValidation.success) {
-        logger.warn('Некоректний ID оголошення:', JSON.stringify(paramsValidation.error.errors));
+        logger.warn(
+          'Некоректний ID оголошення:',
+          JSON.stringify(paramsValidation.error.errors)
+        );
         res.status(400).json({
           status: 'error',
           message: 'Некоректний ID оголошення',
@@ -230,12 +267,12 @@ export const listingController = {
         });
         return;
       }
-      
+
       const { id } = paramsValidation.data;
-      
+
       // 2. Отримання оголошення
       const result = await listingService.getListing(id);
-      
+
       // 3. Успішна відповідь
       logger.info(`Отримано оголошення з ID ${id}`);
       res.status(200).json({
@@ -244,7 +281,7 @@ export const listingController = {
       });
     } catch (error: any) {
       logger.error(`Помилка отримання оголошення: ${error.message}`);
-      
+
       if (error.message.includes('не знайдено')) {
         res.status(404).json({
           status: 'error',
@@ -266,11 +303,14 @@ export const listingController = {
   async deleteListing(req: Request, res: Response): Promise<void> {
     try {
       logger.info('Запит на видалення оголошення');
-      
+
       // 1. Валідація параметра ID
       const paramsValidation = listingIdParamSchema.safeParse(req.params);
       if (!paramsValidation.success) {
-        logger.warn('Некоректний ID оголошення:', JSON.stringify(paramsValidation.error.errors));
+        logger.warn(
+          'Некоректний ID оголошення:',
+          JSON.stringify(paramsValidation.error.errors)
+        );
         res.status(400).json({
           status: 'error',
           message: 'Некоректний ID оголошення',
@@ -278,9 +318,9 @@ export const listingController = {
         });
         return;
       }
-      
+
       const { id } = paramsValidation.data;
-      
+
       // 2. Отримуємо ID користувача з JWT токена
       const userId = (req as any).user?.id;
       if (!userId) {
@@ -291,23 +331,25 @@ export const listingController = {
         });
         return;
       }
-      
+
       // 3. Перевіряємо права доступу
       const isOwner = await listingService.isListingOwner(id, userId);
       const isAdmin = (req as any).user?.role === 'ADMIN';
-      
+
       if (!isOwner && !isAdmin) {
-        logger.warn(`Користувач ${userId} намагається видалити чуже оголошення ${id}`);
+        logger.warn(
+          `Користувач ${userId} намагається видалити чуже оголошення ${id}`
+        );
         res.status(403).json({
           status: 'error',
           message: 'У вас немає прав для видалення цього оголошення',
         });
         return;
       }
-      
+
       // 4. Видаляємо оголошення
       await listingService.deleteListing(id);
-      
+
       // 5. Успішна відповідь
       logger.info(`Оголошення з ID ${id} успішно видалено`);
       res.status(200).json({
@@ -316,7 +358,7 @@ export const listingController = {
       });
     } catch (error: any) {
       logger.error(`Помилка видалення оголошення: ${error.message}`);
-      
+
       if (error.message.includes('не знайдено')) {
         res.status(404).json({
           status: 'error',
@@ -338,7 +380,7 @@ export const listingController = {
   async getUserListings(req: Request, res: Response): Promise<void> {
     try {
       logger.info('Запит на отримання оголошень користувача');
-      
+
       // 1. Отримуємо ID користувача з JWT токена
       const userId = (req as any).user?.id;
       if (!userId) {
@@ -349,11 +391,14 @@ export const listingController = {
         });
         return;
       }
-      
+
       // 2. Валідація параметрів запиту
       const queryValidation = listingQuerySchema.safeParse(req.query);
       if (!queryValidation.success) {
-        logger.warn('Некоректні параметри запиту:', JSON.stringify(queryValidation.error.errors));
+        logger.warn(
+          'Некоректні параметри запиту:',
+          JSON.stringify(queryValidation.error.errors)
+        );
         res.status(400).json({
           status: 'error',
           message: 'Некоректні параметри запиту',
@@ -361,17 +406,19 @@ export const listingController = {
         });
         return;
       }
-      
+
       // 3. Отримання списку оголошень користувача
       const filters = {
         ...queryValidation.data,
         userId,
       };
-      
+
       const result = await listingService.getListings(filters);
-      
+
       // 4. Успішна відповідь
-      logger.info(`Отримано ${result.listings.length} оголошень користувача з ${result.total} загальних`);
+      logger.info(
+        `Отримано ${result.listings.length} оголошень користувача з ${result.total} загальних`
+      );
       res.status(200).json({
         status: 'success',
         data: result,
@@ -384,5 +431,5 @@ export const listingController = {
         details: error.message,
       });
     }
-  }
+  },
 };

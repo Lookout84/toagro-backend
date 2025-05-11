@@ -7,6 +7,7 @@ import { logger } from '../utils/logger';
 interface TokenPayload {
   userId: number;
   role: string;
+  exp?: number; // JWT expiration timestamp (optional)
 }
 
 declare global {
@@ -18,6 +19,42 @@ declare global {
   }
 }
 
+// export const authenticate = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ) => {
+//   try {
+//     const authHeader = req.headers.authorization;
+    
+//     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+//       return res.status(401).json({ message: 'Authentication required' });
+//     }
+    
+//     const token = authHeader.split(' ')[1];
+//     const decoded = jwt.verify(token, config.jwtSecret) as TokenPayload;
+    
+//     // Check if user exists
+//     const user = await prisma.user.findUnique({
+//       where: { id: decoded.userId },
+//       select: { id: true, role: true }
+//     });
+    
+//     if (!user) {
+//       return res.status(401).json({ message: 'User not found' });
+//     }
+    
+//     // Add user info to request
+//     req.userId = user.id;
+//     req.userRole = user.role;
+    
+//     next();
+//   } catch (error) {
+//     logger.error(`Authentication error: ${error}`);
+//     return res.status(401).json({ message: 'Invalid or expired token' });
+//   }
+// };
+
 export const authenticate = async (
   req: Request,
   res: Response,
@@ -27,30 +64,56 @@ export const authenticate = async (
     const authHeader = req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ message: 'Authentication required' });
+      return res.status(401).json({ 
+        status: 'error',
+        message: 'Authentication required' 
+      });
     }
     
     const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, config.jwtSecret) as TokenPayload;
     
-    // Check if user exists
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.userId },
-      select: { id: true, role: true }
-    });
-    
-    if (!user) {
-      return res.status(401).json({ message: 'User not found' });
+    try {
+      const decoded = jwt.verify(token, config.jwtSecret) as TokenPayload;
+      
+      // Check if token is expired
+      const currentTimestamp = Math.floor(Date.now() / 1000);
+      if (decoded.exp && decoded.exp < currentTimestamp) {
+        return res.status(401).json({ 
+          status: 'error',
+          message: 'Token expired'
+        });
+      }
+      
+      // Check if user exists
+      const user = await prisma.user.findUnique({
+        where: { id: decoded.userId },
+        select: { id: true, role: true }
+      });
+      
+      if (!user) {
+        return res.status(401).json({ 
+          status: 'error',
+          message: 'User not found' 
+        });
+      }
+      
+      // Add user info to request
+      req.userId = user.id;
+      req.userRole = user.role;
+      
+      next();
+    } catch (jwtError) {
+      return res.status(401).json({ 
+        status: 'error',
+        message: 'Invalid token' 
+      });
     }
-    
-    // Add user info to request
-    req.userId = user.id;
-    req.userRole = user.role;
-    
-    next();
   } catch (error) {
     logger.error(`Authentication error: ${error}`);
-    return res.status(401).json({ message: 'Invalid or expired token' });
+    return res.status(500).json({ 
+      status: 'error',
+      message: 'Authentication failed due to server error' 
+    });
   }
 };
 
