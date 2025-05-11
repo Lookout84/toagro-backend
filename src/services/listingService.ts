@@ -261,9 +261,6 @@ export const listingService = {
   /**
    * Отримання деталей оголошення
    */
-  /**
-   * Отримання деталей оголошення
-   */
   async getListing(id: number): Promise<any> {
     // Змінено тип повернення з Listing на any
     try {
