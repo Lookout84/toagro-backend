@@ -8,6 +8,8 @@ import {
   listingQuerySchema,
   listingIdParamSchema,
 } from '../schemas/listingSchema';
+import { getImageUrl } from '../utils/fileUpload';
+import { imageService } from '../services/imageService';
 
 const prisma = new PrismaClient();
 
@@ -29,8 +31,44 @@ export const listingController = {
         });
         return;
       }
-      // 2. Валідація даних
-      const validationResult = createListingSchema.safeParse(req.body);
+
+      // 2. Отримуємо ID користувача з JWT токена
+      const userId = req.userId;
+      if (!userId) {
+        logger.warn('Спроба створення оголошення без автентифікації');
+        res.status(401).json({
+          status: 'error',
+          message: 'Користувач не автентифікований',
+        });
+        return;
+      }
+      // Логуємо інформацію про завантажені файли
+      const uploadedFiles = req.files as Express.Multer.File[];
+      logger.info(`Завантажено ${uploadedFiles?.length || 0} файлів`);
+
+      // Перетворюємо шляхи до завантажених файлів у URL
+      const images = uploadedFiles
+        ? uploadedFiles.map((file) => getImageUrl(file.filename))
+        : [];
+      // const userId = (req as any).user?.id;
+      // if (!userId) {
+      //   logger.warn('Спроба створення оголошення без автентифікації');
+      //   res.status(401).json({
+      //     status: 'error',
+      //     message: 'Користувач не автентифікований',
+      //     details: 'ID користувача відсутній в токені',
+      //   });
+      //   return;
+
+      // 3. Підготовка даних для валідації
+      const listingData = {
+        ...req.body,
+        userId,
+        images,
+      };
+
+      // 4. Валідація даних
+      const validationResult = createListingSchema.safeParse(listingData);
       if (!validationResult.success) {
         logger.warn(
           'Помилка валідації даних:',
@@ -44,98 +82,111 @@ export const listingController = {
         return;
       }
 
-      // 3. Отримуємо ID користувача з JWT токена
-      const userId = req.userId;
-      if (!userId) {
-        logger.warn('Спроба створення оголошення без автентифікації');
-        res.status(401).json({
-          status: 'error',
-          message: 'Користувач не автентифікований',
+      // // 4. Валідація даних
+      // const validationResult = createListingSchema.safeParse(req.body);
+      // if (!validationResult.success) {
+      //   logger.warn(
+      //     'Помилка валідації даних:',
+      //     JSON.stringify(validationResult.error.errors)
+      //   );
+      //   res.status(400).json({
+      //     status: 'error',
+      //     message: 'Помилка валідації',
+      //     errors: validationResult.error.format(),
+      //   });
+      //   return;
+      // }
+
+      // 5. Створення оголошення
+      try {
+        // Перетворюємо condition в формат для бази даних (NEW/USED)
+        const condition =
+          validationResult.data.condition === 'new' ? 'NEW' : 'USED';
+
+        const { listing } = await listingService.createListing({
+          ...validationResult.data,
+          condition,
+          userId,
         });
-        return;
-        // const userId = (req as any).user?.id;
-        // if (!userId) {
-        //   logger.warn('Спроба створення оголошення без автентифікації');
-        //   res.status(401).json({
-        //     status: 'error',
-        //     message: 'Користувач не автентифікований',
-        //     details: 'ID користувача відсутній в токені',
-        //   });
-        //   return;
+
+        logger.info(`Оголошення з ID ${listing.id} успішно створено`);
+        res.status(201).json({
+          status: 'success',
+          message: 'Оголошення успішно створено',
+          data: {
+            id: listing.id,
+            title: listing.title,
+            createdAt: listing.createdAt,
+          },
+        });
+      } catch (error: any) {
+        logger.error(`Помилка створення оголошення: ${error.message}`);
+        res.status(500).json({
+          status: 'error',
+          message: 'Не вдалося створити оголошення',
+          details: error.message,
+        });
       }
-
-      // 4. Перетворюємо condition в формат для бази даних (NEW/USED)
-      const condition =
-        validationResult.data.condition === 'new' ? 'NEW' : 'USED';
-
-      // Перетворюємо currency в формат для бази даних
-      const currency = validationResult.data.currency || 'UAH'; // Значення за замовчуванням
-
-      // 5. Створюємо оголошення
-      const { listing } = await listingService.createListing({
-        ...validationResult.data,
-        userId,
-        condition,
-        currency,
-      });
-
-      // 6. Успішна відповідь
-      logger.info(`Створено нове оголошення з ID: ${listing.id}`);
-      res.status(201).json({
-        status: 'success',
-        message: 'Оголошення успішно створено',
-        data: { listing },
-      });
     } catch (error: any) {
       logger.error(`Помилка створення оголошення: ${error.message}`);
       res.status(500).json({
         status: 'error',
-        message: 'Не вдалося створити оголошення',
+        message: 'Помилка сервера при створенні оголошення',
         details: error.message,
       });
     }
   },
+  //     // 4. Перетворюємо condition в формат для бази даних (NEW/USED)
+  //     const condition =
+  //       validationResult.data.condition === 'new' ? 'NEW' : 'USED';
+
+  //     // Перетворюємо currency в формат для бази даних
+  //     const currency = validationResult.data.currency || 'UAH'; // Значення за замовчуванням
+
+  //     // 5. Створюємо оголошення
+  //     const { listing } = await listingService.createListing({
+  //       ...validationResult.data,
+  //       userId,
+  //       condition,
+  //       currency,
+  //     });
+
+  //     // 6. Успішна відповідь
+  //     logger.info(`Створено нове оголошення з ID: ${listing.id}`);
+  //     res.status(201).json({
+  //       status: 'success',
+  //       message: 'Оголошення успішно створено',
+  //       data: { listing },
+  //     });
+  //   } catch (error: any) {
+  //     logger.error(`Помилка створення оголошення: ${error.message}`);
+  //     res.status(500).json({
+  //       status: 'error',
+  //       message: 'Не вдалося створити оголошення',
+  //       details: error.message,
+  //     });
+  //   }
+  // },
 
   /**
    * Оновлення існуючого оголошення
    */
   async updateListing(req: Request, res: Response): Promise<void> {
     try {
-      logger.info('Спроба оновлення оголошення');
+      logger.info(`Спроба оновлення оголошення з ID: ${req.params.id}`);
 
-      // 1. Валідація ID оголошення
-      const paramsValidation = listingIdParamSchema.safeParse(req.params);
-      if (!paramsValidation.success) {
-        logger.warn(
-          'Некоректний ID оголошення:',
-          JSON.stringify(paramsValidation.error.errors)
-        );
+      // 1. Парсимо ID оголошення
+      const listingId = parseInt(req.params.id);
+      if (isNaN(listingId)) {
+        logger.warn('Недійсний ID оголошення');
         res.status(400).json({
           status: 'error',
-          message: 'Некоректний ID оголошення',
-          errors: paramsValidation.error.format(),
+          message: 'Недійсний ID оголошення',
         });
         return;
       }
 
-      const { id } = paramsValidation.data;
-
-      // 2. Валідація даних для оновлення
-      const validationResult = updateListingSchema.safeParse(req.body);
-      if (!validationResult.success) {
-        logger.warn(
-          'Помилка валідації даних для оновлення:',
-          JSON.stringify(validationResult.error.errors)
-        );
-        res.status(400).json({
-          status: 'error',
-          message: 'Помилка валідації',
-          errors: validationResult.error.format(),
-        });
-        return;
-      }
-
-      // 3. Отримуємо ID користувача з JWT токена
+      // 2. Отримуємо ID користувача з JWT токена
       const userId = (req as any).user?.id;
       if (!userId) {
         logger.warn('Спроба оновлення оголошення без автентифікації');
@@ -146,59 +197,143 @@ export const listingController = {
         return;
       }
 
-      // 4. Перевіряємо права доступу
-      const isOwner = await listingService.isListingOwner(id, userId);
-      const isAdmin = (req as any).user?.role === 'ADMIN';
-
-      if (!isOwner && !isAdmin) {
+      // 3. Перевіряємо наявність оголошення та права на редагування
+      const isOwner = await listingService.isListingOwner(listingId, userId);
+      if (!isOwner) {
         logger.warn(
-          `Користувач ${userId} намагається оновити чуже оголошення ${id}`
+          `Користувач ${userId} намагається редагувати чуже оголошення ${listingId}`
         );
         res.status(403).json({
           status: 'error',
-          message: 'У вас немає прав для редагування цього оголошення',
+          message: 'Ви не маєте прав для редагування цього оголошення',
         });
         return;
       }
 
-      // 5. Підготовка даних для оновлення
-      const updateData: any = { ...validationResult.data };
+      // 4. Отримуємо завантажені зображення
+      const uploadedFiles = req.files as Express.Multer.File[];
+      logger.info(`Завантажено ${uploadedFiles?.length || 0} нових зображень`);
 
-      // Перетворюємо condition в формат для бази даних, якщо він присутній
-      if (updateData.condition) {
-        updateData.condition = updateData.condition === 'new' ? 'NEW' : 'USED';
-      }
-
-      // Перетворюємо currency в формат для бази даних, якщо він присутній
-      if (updateData.currency) {
-        updateData.currency = updateData.currency.toUpperCase();
-      }
-      
-      // 6. Оновлюємо оголошення
-      const { listing } = await listingService.updateListing(id, updateData);
-
-      // 7. Успішна відповідь
-      logger.info(`Оголошення з ID ${id} успішно оновлено`);
-      res.status(200).json({
-        status: 'success',
-        message: 'Оголошення успішно оновлено',
-        data: { listing },
+      // 5. Отримуємо поточне оголошення для перевірки наявних зображень
+      const existingListing = await prisma.listing.findUnique({
+        where: { id: listingId },
+        select: { images: true },
       });
-    } catch (error: any) {
-      logger.error(`Помилка оновлення оголошення: ${error.message}`);
 
-      if (error.message.includes('не знайдено')) {
+      if (!existingListing) {
+        logger.warn(`Оголошення з ID ${listingId} не знайдено`);
         res.status(404).json({
           status: 'error',
           message: 'Оголошення не знайдено',
         });
-      } else {
-        res.status(500).json({
+        return;
+      }
+
+      // 6. Визначаємо які зображення зберегти
+      let updatedImages = [...(existingListing?.images || [])];
+
+      // 7. Якщо прийшли нові зображення, додаємо їх
+      if (uploadedFiles && uploadedFiles.length > 0) {
+        const newImages = uploadedFiles.map((file) =>
+          getImageUrl(file.filename)
+        );
+        updatedImages = [...updatedImages, ...newImages];
+        logger.info(`Додано ${newImages.length} нових зображень`);
+      }
+
+      // 8. Якщо в запиті є поле imagesToRemove, видаляємо їх
+      if (req.body.imagesToRemove) {
+        const imagesToRemove = Array.isArray(req.body.imagesToRemove)
+          ? req.body.imagesToRemove
+          : [req.body.imagesToRemove];
+
+        logger.info(`Запит на видалення ${imagesToRemove.length} зображень`);
+
+        // Видаляємо зазначені зображення
+        await imageService.deleteImages(imagesToRemove);
+
+        // Оновлюємо список зображень
+        updatedImages = updatedImages.filter(
+          (img) => !imagesToRemove.includes(img)
+        );
+        logger.info(
+          `Залишилось ${updatedImages.length} зображень після видалення`
+        );
+      }
+
+      // 9. Підготовка даних для оновлення
+      const updateData = {
+        ...req.body,
+        images: updatedImages,
+      };
+
+      // Видаляємо службове поле
+      delete updateData.imagesToRemove;
+
+      // 10. Валідація даних
+      const validationResult = updateListingSchema.safeParse(updateData);
+      if (!validationResult.success) {
+        logger.warn(
+          'Помилка валідації даних:',
+          JSON.stringify(validationResult.error.errors)
+        );
+        res.status(400).json({
+          status: 'error',
+          message: 'Помилка валідації',
+          errors: validationResult.error.format(),
+        });
+        return;
+      }
+
+      // 11. Підготовка даних для передачі в сервіс
+      const validatedData = validationResult.data as any; // Using type assertion to avoid TypeScript error
+
+      // Перетворюємо condition в формат для бази даних, якщо він присутній
+      if (validatedData.condition) {
+        validatedData.condition =
+          validatedData.condition === 'new' ? 'NEW' : 'USED';
+      }
+
+      // Перетворення currency в потрібний формат, якщо є
+      if (validatedData.currency) {
+        validatedData.currency = validatedData.currency.toUpperCase();
+      }
+
+      // 12. Оновлення оголошення
+      try {
+        const { listing } = await listingService.updateListing(
+          listingId,
+          validatedData
+        );
+
+        logger.info(`Оголошення з ID ${listingId} успішно оновлено`);
+        res.status(200).json({
+          status: 'success',
+          message: 'Оголошення успішно оновлено',
+          data: {
+            id: listing.id,
+            title: listing.title,
+            updatedAt: listing.updatedAt,
+            images: listing.images,
+          },
+        });
+      } catch (updateError: any) {
+        logger.error(
+          `Помилка при оновленні оголошення: ${updateError.message}`
+        );
+        res.status(400).json({
           status: 'error',
           message: 'Не вдалося оновити оголошення',
-          details: error.message,
+          details: updateError.message,
         });
       }
+    } catch (error: any) {
+      logger.error(`Помилка оновлення оголошення: ${error.message}`);
+      res.status(500).json({
+        status: 'error',
+        message: 'Помилка сервера при оновленні оголошення',
+        details: error.message,
+      });
     }
   },
 

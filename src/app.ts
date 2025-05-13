@@ -2,6 +2,7 @@ import express, { Express } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
+import { handleMulterError } from './middleware/errorHandler';
 import path from 'path';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -17,7 +18,10 @@ import { redisClient } from './utils/redis';
 import { notificationService } from './services/notificationService';
 import { scheduledTaskService } from './services/scheduledTaskService';
 import { bulkNotificationService } from './services/bulkNotificationService';
-import { interServiceCommunication, RequestType } from './services/interServiceCommunication';
+import {
+  interServiceCommunication,
+  RequestType,
+} from './services/interServiceCommunication';
 import { prisma } from './config/db';
 
 // Import routes
@@ -37,7 +41,7 @@ import brandRoutes from './routes/brand';
 const isPortAvailable = (port: number): Promise<boolean> => {
   return new Promise((resolve) => {
     const server = net.createServer();
-    
+
     server.once('error', (err: any) => {
       if (err.code === 'EADDRINUSE') {
         // Порт зайнятий
@@ -48,32 +52,37 @@ const isPortAvailable = (port: number): Promise<boolean> => {
         resolve(false);
       }
     });
-    
+
     server.once('listening', () => {
       // Порт вільний, закриваємо тестовий сервер
       server.close(() => resolve(true));
     });
-    
+
     server.listen(port);
   });
 };
 
 // Функція для пошуку вільного порту
-const findAvailablePort = async (startPort: number, maxAttempts: number = 10): Promise<number> => {
+const findAvailablePort = async (
+  startPort: number,
+  maxAttempts: number = 10
+): Promise<number> => {
   let port = startPort;
   let attempts = 0;
-  
+
   while (attempts < maxAttempts) {
     if (await isPortAvailable(port)) {
       return port;
     }
-    
+
     logger.warn(`Port ${port} is already in use, trying port ${port + 1}`);
     port++;
     attempts++;
   }
-  
-  throw new Error(`Could not find available port after ${maxAttempts} attempts`);
+
+  throw new Error(
+    `Could not find available port after ${maxAttempts} attempts`
+  );
 };
 
 // Swagger configuration
@@ -102,7 +111,9 @@ const httpServer = createServer(app);
 // Додаємо обробник помилок для сервера
 httpServer.on('error', (error: any) => {
   if (error.code === 'EADDRINUSE') {
-    logger.error(`Port ${config.port} is already in use. Trying to find an alternative port.`);
+    logger.error(
+      `Port ${config.port} is already in use. Trying to find an alternative port.`
+    );
     // Не завершуємо процес, оскільки startServer буде шукати новий порт
   } else {
     logger.error(`Server error: ${error.message}`);
@@ -162,10 +173,10 @@ const initializeServices = async () => {
 
       // Initialize inter-service communication
       await interServiceCommunication.initialize();
-      
+
       // Set up request handlers for inter-service communication
       await setupInterServiceHandlers();
-      
+
       logger.info('Inter-service communication handlers set up');
     } catch (error) {
       logger.error('Failed to connect to RabbitMQ:', error);
@@ -179,19 +190,25 @@ const initializeServices = async () => {
         const swaggerOptions = {
           explorer: true,
           customCss: '.swagger-ui .topbar { display: none }',
-          customSiteTitle: "ToAgro API Documentation"
+          customSiteTitle: 'ToAgro API Documentation',
         };
-        
+
         // Середовар для Swagger UI
-        app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerFile, swaggerOptions));
-        
+        app.use(
+          '/api-docs',
+          swaggerUi.serve,
+          swaggerUi.setup(swaggerFile, swaggerOptions)
+        );
+
         // Кінцева точка для JSON-специфікації OpenAPI
         app.get('/api-docs.json', (req, res) => {
           res.setHeader('Content-Type', 'application/json');
           res.send(swaggerFile);
         });
-        
-        logger.info(`Swagger docs available at http://localhost:${config.port}/api-docs`);
+
+        logger.info(
+          `Swagger docs available at http://localhost:${config.port}/api-docs`
+        );
       } catch (error) {
         logger.error('Failed to setup Swagger:', error);
         // Продовжуємо без Swagger, якщо не вдалося налаштувати
@@ -212,7 +229,7 @@ const setupInterServiceHandlers = async () => {
     RequestType.GET_USER_INFO,
     async (payload) => {
       const { userId } = payload;
-      
+
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: {
@@ -224,20 +241,20 @@ const setupInterServiceHandlers = async () => {
           createdAt: true,
         },
       });
-      
+
       if (!user) {
         throw new Error('User not found');
       }
-      
+
       return user;
     }
   );
-  
+
   await interServiceCommunication.handleRequests(
     RequestType.GET_LISTING_INFO,
     async (payload) => {
       const { listingId } = payload;
-      
+
       const listing = await prisma.listing.findUnique({
         where: { id: listingId },
         include: {
@@ -257,20 +274,20 @@ const setupInterServiceHandlers = async () => {
           },
         },
       });
-      
+
       if (!listing) {
         throw new Error('Listing not found');
       }
-      
+
       return listing;
     }
   );
-  
+
   await interServiceCommunication.handleRequests(
     RequestType.CHECK_PAYMENT_STATUS,
     async (payload) => {
       const { transactionId } = payload;
-      
+
       const payment = await prisma.payment.findUnique({
         where: { transactionId },
         select: {
@@ -284,11 +301,11 @@ const setupInterServiceHandlers = async () => {
           completedAt: true,
         },
       });
-      
+
       if (!payment) {
         throw new Error('Payment not found');
       }
-      
+
       return payment;
     }
   );
@@ -298,7 +315,7 @@ const setupInterServiceHandlers = async () => {
 const shutdown = async () => {
   try {
     logger.info('Starting graceful shutdown...');
-    
+
     await Promise.allSettled([
       prisma.$disconnect(),
       (async () => {
@@ -352,12 +369,13 @@ app.use(helmet());
 app.use(
   cors({
     origin: config.corsOrigin || '*',
-    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
 app.use(compression());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Static files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
@@ -368,7 +386,7 @@ app.post('/debug', (req, res) => {
     body: req.body,
     method: req.method,
     contentType: req.headers['content-type'],
-    bodyKeys: Object.keys(req.body)
+    bodyKeys: Object.keys(req.body),
   });
 });
 
@@ -377,7 +395,7 @@ app.post('/raw-json-test', (req, res) => {
   res.json({
     success: true,
     receivedDataKeys: Object.keys(req.body),
-    receivedData: req.body
+    receivedData: req.body,
   });
 });
 // Routes
@@ -394,6 +412,7 @@ app.use('/api/campaigns', campaignRoutes);
 app.use('/api/brands', brandRoutes);
 
 // Error handling
+app.use(handleMulterError);
 app.use(errorHandler);
 
 // Start server
@@ -401,26 +420,30 @@ const startServer = async () => {
   try {
     // Перевіряємо доступність порту перед запуском сервера
     const availablePort = await findAvailablePort(config.port);
-    
+
     if (availablePort !== config.port) {
-      logger.warn(`Original port ${config.port} is not available, using port ${availablePort} instead`);
+      logger.warn(
+        `Original port ${config.port} is not available, using port ${availablePort} instead`
+      );
       config.port = availablePort;
-      
+
       // Оновлюємо URL серверів у Swagger
       swaggerOptions.definition.servers[0].url = `http://localhost:${config.port}`;
     }
-    
+
     await initializeServices();
-    
+
     // Налаштування для повторного використання адреси
     const serverOptions = {
       host: config.host || '0.0.0.0',
       port: config.port,
       exclusive: false, // Дозволяє кільком серверам спільно використовувати порт
     };
-    
+
     httpServer.listen(serverOptions, () => {
-      logger.info(`Server running in ${config.nodeEnv} mode on port ${config.port}`);
+      logger.info(
+        `Server running in ${config.nodeEnv} mode on port ${config.port}`
+      );
       logger.info(`CORS configured for: ${config.corsOrigin || '*'}`);
     });
   } catch (error) {

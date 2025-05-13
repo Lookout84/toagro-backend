@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { logger } from '../utils/logger';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { ZodError } from 'zod';
+import multer from 'multer';
 
 interface CustomError extends Error {
   statusCode?: number;
@@ -51,7 +52,36 @@ export const errorHandler = (
   });
 };
 
-
+// Обробник помилок multer
+export const handleMulterError = (err: any, req: Request, res: Response, next: NextFunction) => {
+  if (err instanceof multer.MulterError) {
+    logger.error(`Помилка завантаження файлу: ${err.message}`);
+    
+    let message = 'Помилка при завантаженні файлу';
+    
+    switch (err.code) {
+      case 'LIMIT_FILE_SIZE':
+        message = 'Файл занадто великий. Максимальний розмір - 10 MB';
+        break;
+      case 'LIMIT_FILE_COUNT':
+        message = 'Занадто багато файлів. Максимальна кількість - 10';
+        break;
+      case 'LIMIT_UNEXPECTED_FILE':
+        message = 'Неочікуваний формат файлу';
+        break;
+      default:
+        message = err.message;
+    }
+    
+    return res.status(400).json({
+      status: 'error',
+      message,
+      code: err.code
+    });
+  }
+  
+  next(err);
+};
 // import { Request, Response, NextFunction } from 'express';
 // import { logger } from '../utils/logger';
 // import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
