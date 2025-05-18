@@ -33,7 +33,7 @@ export const listingController = {
       }
 
       // 2. Отримуємо ID користувача з JWT токена
-      const userId = req.userId;
+      const userId = req.userId ?? (req as any).user?.id;
       if (!userId) {
         logger.warn('Спроба створення оголошення без автентифікації');
         res.status(401).json({
@@ -42,6 +42,7 @@ export const listingController = {
         });
         return;
       }
+
       // Логуємо інформацію про завантажені файли
       const uploadedFiles = req.files as Express.Multer.File[];
       logger.info(`Завантажено ${uploadedFiles?.length || 0} файлів`);
@@ -50,20 +51,10 @@ export const listingController = {
       const images = uploadedFiles
         ? uploadedFiles.map((file) => getImageUrl(file.filename))
         : [];
-      // const userId = (req as any).user?.id;
-      // if (!userId) {
-      //   logger.warn('Спроба створення оголошення без автентифікації');
-      //   res.status(401).json({
-      //     status: 'error',
-      //     message: 'Користувач не автентифікований',
-      //     details: 'ID користувача відсутній в токені',
-      //   });
-      //   return;
 
       // 3. Підготовка даних для валідації
       const listingData = {
         ...req.body,
-        userId,
         images,
       };
 
@@ -82,30 +73,10 @@ export const listingController = {
         return;
       }
 
-      // // 4. Валідація даних
-      // const validationResult = createListingSchema.safeParse(req.body);
-      // if (!validationResult.success) {
-      //   logger.warn(
-      //     'Помилка валідації даних:',
-      //     JSON.stringify(validationResult.error.errors)
-      //   );
-      //   res.status(400).json({
-      //     status: 'error',
-      //     message: 'Помилка валідації',
-      //     errors: validationResult.error.format(),
-      //   });
-      //   return;
-      // }
-
       // 5. Створення оголошення
       try {
-        // Перетворюємо condition в формат для бази даних (NEW/USED)
-        const condition =
-          validationResult.data.condition === 'new' ? 'NEW' : 'USED';
-
         const { listing } = await listingService.createListing({
           ...validationResult.data,
-          condition,
           userId,
         });
 
@@ -136,37 +107,6 @@ export const listingController = {
       });
     }
   },
-  //     // 4. Перетворюємо condition в формат для бази даних (NEW/USED)
-  //     const condition =
-  //       validationResult.data.condition === 'new' ? 'NEW' : 'USED';
-
-  //     // Перетворюємо currency в формат для бази даних
-  //     const currency = validationResult.data.currency || 'UAH'; // Значення за замовчуванням
-
-  //     // 5. Створюємо оголошення
-  //     const { listing } = await listingService.createListing({
-  //       ...validationResult.data,
-  //       userId,
-  //       condition,
-  //       currency,
-  //     });
-
-  //     // 6. Успішна відповідь
-  //     logger.info(`Створено нове оголошення з ID: ${listing.id}`);
-  //     res.status(201).json({
-  //       status: 'success',
-  //       message: 'Оголошення успішно створено',
-  //       data: { listing },
-  //     });
-  //   } catch (error: any) {
-  //     logger.error(`Помилка створення оголошення: ${error.message}`);
-  //     res.status(500).json({
-  //       status: 'error',
-  //       message: 'Не вдалося створити оголошення',
-  //       details: error.message,
-  //     });
-  //   }
-  // },
 
   /**
    * Оновлення існуючого оголошення
@@ -187,7 +127,7 @@ export const listingController = {
       }
 
       // 2. Отримуємо ID користувача з JWT токена
-      const userId = (req as any).user?.id;
+      const userId = req.userId ?? (req as any).user?.id;
       if (!userId) {
         logger.warn('Спроба оновлення оголошення без автентифікації');
         res.status(401).json({
@@ -285,25 +225,11 @@ export const listingController = {
         return;
       }
 
-      // 11. Підготовка даних для передачі в сервіс
-      const validatedData = validationResult.data as any; // Using type assertion to avoid TypeScript error
-
-      // Перетворюємо condition в формат для бази даних, якщо він присутній
-      if (validatedData.condition) {
-        validatedData.condition =
-          validatedData.condition === 'new' ? 'NEW' : 'USED';
-      }
-
-      // Перетворення currency в потрібний формат, якщо є
-      if (validatedData.currency) {
-        validatedData.currency = validatedData.currency.toUpperCase();
-      }
-
-      // 12. Оновлення оголошення
+      // 11. Оновлення оголошення
       try {
         const { listing } = await listingService.updateListing(
           listingId,
-          validatedData
+          validationResult.data
         );
 
         logger.info(`Оголошення з ID ${listingId} успішно оновлено`);
@@ -457,7 +383,7 @@ export const listingController = {
       const { id } = paramsValidation.data;
 
       // 2. Отримуємо ID користувача з JWT токена
-      const userId = (req as any).user?.id;
+      const userId = req.userId ?? (req as any).user?.id;
       if (!userId) {
         logger.warn('Спроба видалення оголошення без автентифікації');
         res.status(401).json({
@@ -517,7 +443,7 @@ export const listingController = {
       logger.info('Запит на отримання оголошень користувача');
 
       // 1. Отримуємо ID користувача з JWT токена
-      const userId = (req as any).user?.id;
+      const userId = req.userId ?? (req as any).user?.id;
       if (!userId) {
         logger.warn('Спроба отримання оголошень без автентифікації');
         res.status(401).json({

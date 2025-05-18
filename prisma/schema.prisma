@@ -123,7 +123,7 @@ model BulkNotification {
   sender       User?                  @relation("SenderNotifications", fields: [senderId], references: [id])
   campaignId   Int?
   campaign     Campaign?              @relation(fields: [campaignId], references: [id])
-  priority     String?                @default("NORMAL") // Використовуємо String бо NotificationPriority, можливо, не enum в Prisma
+  priority     String?                @default("NORMAL")
 }
 
 model Campaign {
@@ -134,10 +134,10 @@ model Campaign {
   status            CampaignStatus     @default(DRAFT)
   startDate         DateTime?
   endDate           DateTime?
-  targetAudience    Json? // Фільтр цільової аудиторії
+  targetAudience    Json?
   goal              String?
   budget            Float?
-  performance       Json? // Статистика ефективності
+  performance       Json?
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   createdById       Int
@@ -181,8 +181,6 @@ enum UserRole {
   ADMIN
 }
 
-// Example model to add:
-
 model UserActivity {
   id           Int      @id @default(autoincrement())
   userId       Int
@@ -199,24 +197,54 @@ model Listing {
   title       String
   description String
   price       Float
-  currency    Currency @default(UAH) // Додаємо нове поле з дефолтним значенням UAH
-  location    String
-  category    String // Залишимо поле для зворотної сумісності
-  categoryId  Int? // Нове поле для зв'язку з моделлю Category
+  currency    Currency      @default(UAH)
+  locationId  Int?
+  location    Location?     @relation(fields: [locationId], references: [id])
+  category    String
+  categoryId  Int?
   userId      Int
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   active      Boolean       @default(true)
   images      String[]
   views       Int           @default(0)
-  condition   ItemCondition @default(used) // Нове поле: новий чи вживаний
-  brandId     Int? // Нове поле для зв'язку з моделлю Brand
-  brand       Brand?        @relation(fields: [brandId], references: [id]) // Зв'язок з брендом
+  condition   ItemCondition @default(used)
+  brandId     Int?
+  brand       Brand?        @relation(fields: [brandId], references: [id])
   user        User          @relation(fields: [userId], references: [id])
-  categoryRel Category?     @relation(fields: [categoryId], references: [id]) // Новий зв'язок
+  categoryRel Category?     @relation(fields: [categoryId], references: [id])
+  motorizedSpec MotorizedSpec?
 }
 
-// Нова модель для брендів техніки
+// --- НОВІ МОДЕЛІ ДЛЯ РЕГІОНІВ ТА ГРОМАД ---
+
+model Region {
+  id          Int         @id @default(autoincrement())
+  name        String      @unique // Наприклад: "Київська область"
+  code        String?     @unique // Наприклад: "KYIVSKA"
+  communities Community[]
+}
+
+model Community {
+  id        Int        @id @default(autoincrement())
+  name      String // Наприклад: "Бучанська громада"
+  regionId  Int
+  region    Region     @relation(fields: [regionId], references: [id])
+  locations Location[]
+
+  @@unique([regionId, name])
+}
+
+model Location {
+  id          Int       @id @default(autoincrement())
+  communityId Int
+  community   Community @relation(fields: [communityId], references: [id])
+  settlement  String // Наприклад: "с. Мила"
+  listings    Listing[]
+}
+
+// --- КІНЕЦЬ НОВИХ МОДЕЛЕЙ ---
+
 model Brand {
   id          Int       @id @default(autoincrement())
   name        String    @unique
@@ -224,7 +252,7 @@ model Brand {
   description String?
   logo        String?
   active      Boolean   @default(true)
-  popular     Boolean   @default(false) // Для відображення популярних брендів
+  popular     Boolean   @default(false)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   listings    Listing[]
@@ -256,8 +284,6 @@ model Payment {
   user          User          @relation(fields: [userId], references: [id])
 }
 
-// Додати після моделі Payment
-
 model Category {
   id          Int        @id @default(autoincrement())
   name        String     @unique
@@ -267,6 +293,7 @@ model Category {
   parentId    Int?
   active      Boolean    @default(true)
   favorite    Boolean    @default(false)
+  isMotorized Boolean    @default(false) // чи є категорія моторизованою технікою
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   parent      Category?  @relation("CategoryToCategory", fields: [parentId], references: [id])
@@ -288,14 +315,12 @@ enum NotificationType {
   IN_APP
 }
 
-// Перерахування для пріоритетів сповіщень
 enum NotificationPriority {
   LOW
   NORMAL
   HIGH
 }
 
-// Перерахування для статусів планових завдань
 enum ScheduledTaskStatus {
   PENDING
   PROCESSING
@@ -305,7 +330,6 @@ enum ScheduledTaskStatus {
   ACTIVE
 }
 
-// Перерахування для статусів масових розсилок
 enum BulkNotificationStatus {
   PENDING
   PROCESSING
@@ -324,7 +348,6 @@ enum CampaignType {
   NEWSLETTER
 }
 
-// Перерахування для статусів кампаній
 enum CampaignStatus {
   DRAFT
   SCHEDULED
@@ -339,9 +362,90 @@ enum ItemCondition {
   used
 }
 
-// Додайте enum для валюти
 enum Currency {
   UAH
   USD
   EUR
+}
+
+
+// Тип палива
+enum FuelType {
+  DIESEL
+  GASOLINE
+  ELECTRIC
+  HYBRID
+  GAS
+}
+
+// Трансмісія
+enum TransmissionType {
+  MANUAL
+  AUTOMATIC
+  HYDROSTATIC
+  CVT
+}
+
+// Основна модель для моторизованої техніки, зв'язок з Listing
+model MotorizedSpec {
+  id                Int                @id @default(autoincrement())
+  listingId         Int                @unique
+  listing           Listing            @relation(fields: [listingId], references: [id])
+
+  // Основна інформація
+  model             String // Модель
+  year              Int    // Рік випуску
+  serialNumber      String?            @unique
+
+  // Технічні характеристики
+  enginePower       Float? // Потужність двигуна (к.с.)
+  enginePowerKw     Float? // Потужність двигуна (кВт)
+  engineModel       String? // Модель двигуна
+  fuelType          FuelType           @default(DIESEL) // Тип пального
+  fuelCapacity      Float?  // Об'єм паливного бака (літри)
+  transmission      TransmissionType? @default(MANUAL) // Тип трансмісії
+  numberOfGears     Int? // Кількість передач
+
+  // Розміри та вага
+  length            Float?  // Довжина (мм)
+  width             Float?  // Ширина (мм)
+  height            Float?   // Висота (мм)  
+  weight            Float?  // Вага (кг)
+  wheelbase         Float? // Колісна база (мм)
+  groundClearance   Float? // Кліренс (мм)
+
+  // Робочі характеристики
+  workingWidth      Float?  // Робоча ширина (мм)
+  capacity          Float?  // Продуктивність (т/год)
+  liftCapacity      Float?     // Грузопідйомність (кг)
+  threePtHitch      Boolean            @default(false)  // Наявність тризв'язки
+  pto               Boolean            @default(false) // Наявність ВВП (вал відбору потужності) 
+  ptoSpeed          String? // Швидкість ВВП (об/хв)
+
+  // Додаткові характеристики для тракторів
+  frontAxle         String?   // Передній міст (тип)
+  rearAxle          String?  // Задній міст (тип)
+  frontTireSize     String?   // Розмір передніх шин
+  rearTireSize      String?   // Розмір задніх шин
+  hydraulicFlow     Float?    // Продуктивність гідравлічної системи (л/хв)
+  hydraulicPressure Float?      // Тиск гідравлічної системи (бар)
+
+  // Додаткові характеристики для комбайнів
+  grainTankCapacity Float?  // Об'єм бункера (літри)
+  headerWidth       Float?  // Ширина жатки (мм)
+  threshingWidth    Float?    // Ширина молотильного барабана (мм)
+  cleaningArea      Float?  // Площа очистки (м²)
+
+
+  // Експлуатаційна інформація
+  engineHours       Float?  // Години роботи двигуна
+  mileage           Float?  // Пробіг (км)
+  lastServiceDate   DateTime?  // Дата останнього сервісу
+  nextServiceDate   DateTime? // Дата наступного сервісу
+  isOperational     Boolean            @default(true) // Чи в робочому стані
+
+
+  // Тимчасові мітки
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 }

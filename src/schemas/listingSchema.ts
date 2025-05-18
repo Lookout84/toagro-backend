@@ -13,6 +13,27 @@ const numberTransformer = (val: any) => {
   return undefined;
 };
 
+// Схема для вкладеної локації (Region → Community → settlement)
+export const locationInputSchema = z.object({
+  regionId: z.preprocess(
+    numberTransformer,
+    z.number({
+      required_error: "Оберіть область",
+      invalid_type_error: "ID області має бути числом",
+    }).int().positive()
+  ),
+  communityId: z.preprocess(
+    numberTransformer,
+    z.number({
+      required_error: "Оберіть громаду",
+      invalid_type_error: "ID громади має бути числом",
+    }).int().positive()
+  ),
+  settlement: z.string({
+    required_error: "Населений пункт є обов'язковим полем",
+  }).min(2, 'Населений пункт повинен містити мінімум 2 символи'),
+});
+
 // Базова схема для спільних полів
 const listingBaseSchema = {
   title: z
@@ -42,11 +63,7 @@ const listingBaseSchema = {
     currencyEnum.default('UAH')
   ),
 
-  location: z
-    .string({
-      required_error: "Локація є обов'язковим полем",
-    })
-    .min(2, 'Локація повинна містити мінімум 2 символи'),
+  location: locationInputSchema, // <-- нова вкладена схема
 
   category: z.string({
     required_error: "Категорія є обов'язковим полем",
@@ -126,7 +143,15 @@ export const listingQuerySchema = z.object({
     (val) => (val ? Number(val) : undefined),
     z.number().positive().optional()
   ),
-  location: z.string().optional(),
+  regionId: z.preprocess(
+    (val) => (val ? Number(val) : undefined),
+    z.number().int().positive().optional()
+  ),
+  communityId: z.preprocess(
+    (val) => (val ? Number(val) : undefined),
+    z.number().int().positive().optional()
+  ),
+  settlement: z.string().optional(),
   search: z.string().optional(),
   condition: z.preprocess(
     (val) => (typeof val === 'string' ? val.toLowerCase() : val),

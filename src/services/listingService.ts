@@ -4,17 +4,23 @@ import { formatPriceWithCurrency, getCurrencySymbol } from '../utils/currency';
 
 const prisma = new PrismaClient();
 
+interface LocationInput {
+  regionId: number;
+  communityId: number;
+  settlement: string;
+}
+
 interface CreateListingData {
   title: string;
   description: string;
   price: number;
   currency: string;
-  location: string;
+  location: LocationInput;
   category: string;
   categoryId: number;
   brandId?: number;
   images: string[];
-  condition: 'NEW' | 'USED';
+  condition: 'new' | 'used';
   userId: number;
 }
 
@@ -22,13 +28,13 @@ interface UpdateListingData {
   title?: string;
   description?: string;
   price?: number;
-  currency: string;
-  location?: string;
+  currency?: string;
+  location?: LocationInput;
   category?: string;
   categoryId?: number;
   brandId?: number | null;
   images?: string[];
-  condition?: 'NEW' | 'USED';
+  condition?: 'new' | 'used';
   active?: boolean;
 }
 
@@ -51,118 +57,81 @@ export interface ListingQueryInput {
   sortOrder: 'asc' | 'desc';
   search?: string;
   brandId?: number;
-  location?: string;
+  regionId?: number;
+  communityId?: number;
+  settlement?: string;
   category?: string;
   categoryId?: number;
   condition?: 'new' | 'used';
   minPrice?: number;
   maxPrice?: number;
   currency?: string;
+  userId?: number;
 }
+
 export const listingService = {
   /**
    * Створення нового оголошення
    */
-  // async createListing(data: CreateListingData): Promise<ListingResult> {
-  //   try {
-  //     logger.info('Створення нового оголошення');
-
-  //     // 1. Перевірка категорії
-  //     if (data.categoryId) {
-  //       const category = await prisma.category.findUnique({
-  //         where: { id: data.categoryId },
-  //       });
-
-  //       if (!category) {
-  //         logger.warn(`Категорія з ID ${data.categoryId} не знайдена`);
-  //         throw new Error('Категорія не знайдена');
-  //       }
-  //     }
-
-  //     // 2. Перевірка бренду
-  //     if (data.brandId) {
-  //       const brand = await prisma.brand.findUnique({
-  //         where: { id: data.brandId },
-  //       });
-
-  //       if (!brand) {
-  //         logger.warn(`Бренд з ID ${data.brandId} не знайдений`);
-  //         throw new Error('Бренд не знайдений');
-  //       }
-  //     }
-
-  //     // 3. Створення оголошення
-  //     const listing = await prisma.listing.create({
-  //       data: {
-  //         title: data.title,
-  //         description: data.description,
-  //         price: data.price,
-  //         location: data.location,
-  //         category: data.category,
-  //         categoryId: data.categoryId,
-  //         brandId: data.brandId,
-  //         images: data.images,
-  //         condition: data.condition === 'NEW' ? 'new' : 'used',
-  //         userId: data.userId,
-  //         active: true,
-  //       },
-  //     });
-
-  //     logger.info(`Оголошення з ID ${listing.id} успішно створено`);
-  //     return { listing };
-  //   } catch (error) {
-  //     logger.error(`Помилка створення оголошення: ${error}`);
-  //     throw error;
-  //   }
-  // },
-
-  // Add transaction support to the service method
   async createListing(data: CreateListingData): Promise<ListingResult> {
     try {
-      logger.info('Creating new listing with transaction');
+      logger.info('Створення нового оголошення з Location');
 
       return await prisma.$transaction(async (tx) => {
-        // 1. Check category
+        // 1. Перевірка категорії
         if (data.categoryId) {
           const category = await tx.category.findUnique({
             where: { id: data.categoryId },
           });
-
-          if (!category) {
-            throw new Error('Category not found');
-          }
+          if (!category) throw new Error('Категорія не знайдена');
         }
 
-        // 2. Check brand
+        // 2. Перевірка бренду
         if (data.brandId) {
           const brand = await tx.brand.findUnique({
             where: { id: data.brandId },
           });
-
-          if (!brand) {
-            throw new Error('Brand not found');
-          }
+          if (!brand) throw new Error('Бренд не знайдений');
         }
 
-        // 3. Create listing
+        // 3. Знайти або створити Location
+        let locationId: number;
+        const { regionId, communityId, settlement } = data.location;
+        let location = await tx.location.findFirst({
+          where: {
+            communityId,
+            settlement: settlement.trim(),
+          },
+        });
+        if (!location) {
+          location = await tx.location.create({
+            data: {
+              communityId,
+              settlement: settlement.trim(),
+            },
+          });
+        }
+        locationId = location.id;
+
+        // 4. Створення оголошення
         const listing = await tx.listing.create({
           data: {
             title: data.title,
             description: data.description,
             price: data.price,
-            currency: data.currency as any, // Додали нове поле
-            location: data.location,
+            currency: data.currency as any,
+            locationId,
             category: data.category,
             categoryId: data.categoryId,
             brandId: data.brandId,
             images: data.images,
-            condition: data.condition === 'NEW' ? 'new' : 'used',
+            condition: data.condition,
             userId: data.userId,
             active: true,
           },
         });
 
-        // 4. Log the action
+        // 5. Логування дії
         await tx.userActivity.create({
           data: {
             userId: data.userId,
@@ -173,14 +142,15 @@ export const listingService = {
           },
         });
 
-        logger.info(`Listing with ID ${listing.id} successfully created`);
+        logger.info(`Оголошення з ID ${listing.id} успішно створено`);
         return { listing };
       });
     } catch (error) {
-      logger.error(`Error creating listing: ${error}`);
+      logger.error(`Помилка створення оголошення: ${error}`);
       throw error;
     }
   },
+
   /**
    * Оновлення існуючого оголошення
    */
@@ -195,7 +165,6 @@ export const listingService = {
       const existingListing = await prisma.listing.findUnique({
         where: { id },
       });
-
       if (!existingListing) {
         logger.warn(`Оголошення з ID ${id} не знайдено`);
         throw new Error('Оголошення не знайдено');
@@ -206,11 +175,7 @@ export const listingService = {
         const category = await prisma.category.findUnique({
           where: { id: data.categoryId },
         });
-
-        if (!category) {
-          logger.warn(`Категорія з ID ${data.categoryId} не знайдена`);
-          throw new Error('Категорія не знайдена');
-        }
+        if (!category) throw new Error('Категорія не знайдена');
       }
 
       // 3. Перевірка бренду, якщо вказано
@@ -218,33 +183,52 @@ export const listingService = {
         const brand = await prisma.brand.findUnique({
           where: { id: data.brandId },
         });
-
-        if (!brand) {
-          logger.warn(`Бренд з ID ${data.brandId} не знайдений`);
-          throw new Error('Бренд не знайдений');
-        }
+        if (!brand) throw new Error('Бренд не знайдений');
       }
 
-      // 4. Оновлення оголошення
-      const { categoryId, brandId, condition, currency, ...restData } = data;
+      // 4. Оновлення Location, якщо потрібно
+      let locationId: number | undefined = undefined;
+      if (data.location) {
+        const { communityId, settlement } = data.location;
+        let location = await prisma.location.findFirst({
+          where: {
+            communityId,
+            settlement: settlement.trim(),
+          },
+        });
+        if (!location) {
+          location = await prisma.location.create({
+            data: {
+              communityId,
+              settlement: settlement.trim(),
+            },
+          });
+        }
+        locationId = location.id;
+      }
+
+      // 5. Оновлення оголошення
+      const { location, ...dataWithoutLocation } = data;
       const updateData: Prisma.ListingUpdateInput = {
-        ...restData,
-        ...(currency !== undefined
-          ? { currency: { set: currency as any } }
+        ...dataWithoutLocation,
+        ...(data.currency !== undefined
+          ? { currency: data.currency as any }
           : {}),
-        ...(condition !== undefined
-          ? { condition: condition === 'NEW' ? 'new' : 'used' }
+        ...(data.condition !== undefined
+          ? { condition: data.condition }
           : {}),
-        ...(categoryId !== undefined ? { categoryId } : {}),
-        ...(brandId !== undefined
+        ...(data.categoryId !== undefined ? { categoryId: data.categoryId } : {}),
+        ...(data.brandId !== undefined
           ? {
               brand:
-                brandId === null
+                data.brandId === null
                   ? { disconnect: true }
-                  : { connect: { id: brandId } },
+                  : { connect: { id: data.brandId } },
             }
           : {}),
+        ...(locationId !== undefined ? { locationId } : {}),
       };
+
       const listing = await prisma.listing.update({
         where: { id },
         data: updateData,
@@ -262,11 +246,9 @@ export const listingService = {
    * Отримання деталей оголошення
    */
   async getListing(id: number): Promise<any> {
-    // Змінено тип повернення з Listing на any
     try {
       logger.info(`Отримання оголошення з ID ${id}`);
 
-      // 1. Отримання оголошення з включенням користувача, категорії та бренду
       const listing = await prisma.listing.findUnique({
         where: { id },
         include: {
@@ -279,6 +261,15 @@ export const listingService = {
             },
           },
           brand: true,
+          location: {
+            include: {
+              community: {
+                include: {
+                  region: true,
+                },
+              },
+            },
+          },
         },
       });
 
@@ -287,13 +278,13 @@ export const listingService = {
         throw new Error('Оголошення не знайдено');
       }
 
-      // 2. Оновлення кількості переглядів
+      // Оновлення кількості переглядів
       await prisma.listing.update({
         where: { id },
         data: { views: { increment: 1 } },
       });
 
-      // 3. Додаємо додаткову інформацію до відповіді
+      // Додаємо додаткову інформацію до відповіді
       const enrichedListing = {
         ...listing,
         formattedPrice: formatPriceWithCurrency(
@@ -315,12 +306,11 @@ export const listingService = {
    * Отримання списку оголошень з фільтрами
    */
   async getListings(
-    filters: ListingQueryInput & { userId?: number }
+    filters: ListingQueryInput
   ): Promise<ListingsResult> {
     try {
       logger.info('Отримання списку оголошень з фільтрами');
 
-      // 1. Формування фільтрів для запиту
       const where: Prisma.ListingWhereInput = {
         active: true,
       };
@@ -329,67 +319,56 @@ export const listingService = {
       if (filters.category) {
         where.category = filters.category;
       }
-
-      // Фільтр за ID категорії
       if (filters.categoryId) {
         where.categoryId = filters.categoryId;
       }
-
-      // Фільтр за ID бренду
       if (filters.brandId) {
         where.brandId = filters.brandId;
       }
-
-      // Фільтр за мінімальною ціною
       if (filters.minPrice) {
         where.price = {
           ...((where.price as object) || {}),
           gte: filters.minPrice,
         };
       }
-
-      // Фільтр за валютою
       if (filters.currency) {
         where.currency = filters.currency as any;
       }
-
-      // Фільтр за максимальною ціною
       if (filters.maxPrice) {
         where.price = {
           ...((where.price as object) || {}),
           lte: filters.maxPrice,
         };
       }
-
-      // Фільтр за локацією
-      if (filters.location) {
+      // Фільтр за регіоном, громадою, settlement
+      if (filters.regionId || filters.communityId || filters.settlement) {
         where.location = {
-          contains: filters.location,
-          mode: 'insensitive', // Нечутливий до регістру пошук
+          ...(filters.communityId
+            ? { community: { id: filters.communityId } }
+            : {}),
+          ...(filters.regionId
+            ? { community: { regionId: filters.regionId } }
+            : {}),
+          ...(filters.settlement
+            ? { settlement: { contains: filters.settlement, mode: 'insensitive' } }
+            : {}),
         };
       }
-
-      // Фільтр за пошуковим запитом
       if (filters.search) {
         where.OR = [
           { title: { contains: filters.search, mode: 'insensitive' } },
           { description: { contains: filters.search, mode: 'insensitive' } },
         ];
       }
-
-      // Фільтр за станом товару
       if (filters.condition) {
-        where.condition = filters.condition === 'new' ? 'new' : 'used';
+        where.condition = filters.condition;
       }
-
-      // Фільтр за користувачем
       if (filters.userId) {
         where.userId = filters.userId;
       }
 
-      // 2. Налаштування сортування
+      // Сортування
       const orderBy: any = {};
-
       if (filters.sortBy === 'createdAt') {
         orderBy.createdAt = filters.sortOrder;
       } else if (filters.sortBy === 'price') {
@@ -398,12 +377,12 @@ export const listingService = {
         orderBy.views = filters.sortOrder;
       }
 
-      // 3. Налаштування пагінації
+      // Пагінація
       const page = filters.page || 1;
       const limit = filters.limit || 10;
       const skip = (page - 1) * limit;
 
-      // 4. Виконання запитів
+      // Запити
       const [listings, total] = await Promise.all([
         prisma.listing.findMany({
           where,
@@ -419,6 +398,15 @@ export const listingService = {
               },
             },
             brand: true,
+            location: {
+              include: {
+                community: {
+                  include: {
+                    region: true,
+                  },
+                },
+              },
+            },
           },
         }),
         prisma.listing.count({ where }),
@@ -447,7 +435,6 @@ export const listingService = {
     try {
       logger.info(`Видалення оголошення з ID ${id}`);
 
-      // 1. Перевірка існування оголошення
       const listing = await prisma.listing.findUnique({
         where: { id },
       });
@@ -457,7 +444,6 @@ export const listingService = {
         throw new Error('Оголошення не знайдено');
       }
 
-      // 2. Видалення оголошення
       await prisma.listing.delete({
         where: { id },
       });
