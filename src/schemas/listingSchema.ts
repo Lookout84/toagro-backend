@@ -13,8 +13,15 @@ const numberTransformer = (val: any) => {
   return undefined;
 };
 
-// Схема для вкладеної локації (Region → Community → settlement)
+// Схема для вкладеної локації (Country → Region → Community → settlement + координати)
 export const locationInputSchema = z.object({
+  countryId: z.preprocess(
+    numberTransformer,
+    z.number({
+      required_error: "Оберіть країну",
+      invalid_type_error: "ID країни має бути числом",
+    }).int().positive()
+  ),
   regionId: z.preprocess(
     numberTransformer,
     z.number({
@@ -32,7 +39,61 @@ export const locationInputSchema = z.object({
   settlement: z.string({
     required_error: "Населений пункт є обов'язковим полем",
   }).min(2, 'Населений пункт повинен містити мінімум 2 символи'),
+  latitude: z.preprocess(
+    numberTransformer,
+    z.number().optional()
+  ),
+  longitude: z.preprocess(
+    numberTransformer,
+    z.number().optional()
+  ),
 });
+
+// Схема для motorizedSpec (основні поля, можна розширити)
+export const motorizedSpecSchema = z.object({
+  brand: z.string().min(1).optional(),
+  model: z.string().min(1).optional(),
+  year: z.preprocess(numberTransformer, z.number().int().min(1900).max(new Date().getFullYear()).optional()),
+  serialNumber: z.string().optional(),
+  enginePower: z.number().optional(),
+  enginePowerKw: z.number().optional(),
+  engineModel: z.string().optional(),
+  fuelType: z.enum(['DIESEL', 'GASOLINE', 'ELECTRIC', 'HYBRID', 'GAS']).optional(),
+  fuelCapacity: z.number().optional(),
+  transmission: z.enum(['MANUAL', 'AUTOMATIC', 'HYDROSTATIC', 'CVT']).optional(),
+  numberOfGears: z.number().optional(),
+  length: z.number().optional(),
+  width: z.number().optional(),
+  height: z.number().optional(),
+  weight: z.number().optional(),
+  wheelbase: z.number().optional(),
+  groundClearance: z.number().optional(),
+  workingWidth: z.number().optional(),
+  capacity: z.number().optional(),
+  liftCapacity: z.number().optional(),
+  threePtHitch: z.boolean().optional(),
+  pto: z.boolean().optional(),
+  ptoSpeed: z.string().optional(),
+  frontAxle: z.string().optional(),
+  rearAxle: z.string().optional(),
+  frontTireSize: z.string().optional(),
+  rearTireSize: z.string().optional(),
+  hydraulicFlow: z.number().optional(),
+  hydraulicPressure: z.number().optional(),
+  grainTankCapacity: z.number().optional(),
+  headerWidth: z.number().optional(),
+  threshingWidth: z.number().optional(),
+  cleaningArea: z.number().optional(),
+  engineHours: z.number().optional(),
+  mileage: z.number().optional(),
+  lastServiceDate: z.string().optional(),
+  nextServiceDate: z.string().optional(),
+  isOperational: z.boolean().optional(),
+  images: z.array(z.string()).optional(),
+  description: z.string().optional(),
+  price: z.number().optional(),
+  currency: z.string().optional(),
+}).partial();
 
 // Базова схема для спільних полів
 const listingBaseSchema = {
@@ -100,6 +161,9 @@ const listingBaseSchema = {
     (val) => (typeof val === 'string' ? val.toLowerCase() : val),
     listingConditionEnum.default('used')
   ),
+
+  // Додаємо motorizedSpec як вкладений об'єкт (опціонально)
+  motorizedSpec: motorizedSpecSchema.optional(),
 };
 
 // Схема для створення оголошення

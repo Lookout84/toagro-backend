@@ -11,7 +11,7 @@ router.post('/test-no-validation', (req, res) => {
     console.log('Headers:', req.headers);
     console.log('Body:', req.body);
     console.log('Content-Type:', req.headers['content-type']);
-    
+
     res.status(200).json({
       status: 'success',
       message: 'Дані отримано успішно (без валідації)',

@@ -4,21 +4,28 @@ const prisma = new PrismaClient();
 
 export const regionsService = {
   /**
-   * Отримати всі області (регіони)
+   * Отримати всі області (регіони) з країною
    */
-  async getRegions() {
+  async getRegions(countryId?: number) {
     return prisma.region.findMany({
+      where: countryId ? { countryId } : undefined,
+      include: {
+        country: true,
+      },
       orderBy: { name: 'asc' },
     });
   },
 
   /**
-   * Отримати всі громади для конкретної області (regionId)
+   * Отримати регіон за ID
    */
-  async getCommunitiesByRegion(regionId: number) {
-    return prisma.community.findMany({
-      where: { regionId },
-      orderBy: { name: 'asc' },
+  async getRegionById(id: number) {
+    return prisma.region.findUnique({
+      where: { id },
+      include: {
+        country: true,
+        communities: true,
+      },
     });
   },
 };

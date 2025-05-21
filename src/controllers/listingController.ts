@@ -75,9 +75,15 @@ export const listingController = {
 
       // 5. Створення оголошення
       try {
+        // Витягуємо motorizedSpec, якщо є (для моторизованих категорій)
+        const { motorizedSpec, ...listingFields } = ('motorizedSpec' in validationResult.data)
+          ? (validationResult.data as any)
+          : { ...validationResult.data };
+
         const { listing } = await listingService.createListing({
-          ...validationResult.data,
+          ...listingFields,
           userId,
+          ...(motorizedSpec ? { motorizedSpec } : {}),
         });
 
         logger.info(`Оголошення з ID ${listing.id} успішно створено`);
@@ -227,9 +233,22 @@ export const listingController = {
 
       // 11. Оновлення оголошення
       try {
+        // Витягуємо motorizedSpec, якщо є (для моторизованих категорій)
+        let listingFields = { ...validationResult.data };
+        let motorizedSpec;
+        if ('motorizedSpec' in validationResult.data) {
+          // @ts-ignore
+          motorizedSpec = validationResult.data.motorizedSpec;
+          // @ts-ignore
+          delete listingFields.motorizedSpec;
+        }
+
         const { listing } = await listingService.updateListing(
           listingId,
-          validationResult.data
+          {
+            ...listingFields,
+            ...(motorizedSpec ? { motorizedSpec } : {}),
+          }
         );
 
         logger.info(`Оголошення з ID ${listingId} успішно оновлено`);

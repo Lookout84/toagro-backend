@@ -5,9 +5,12 @@ import { formatPriceWithCurrency, getCurrencySymbol } from '../utils/currency';
 const prisma = new PrismaClient();
 
 interface LocationInput {
+  countryId: number;
   regionId: number;
   communityId: number;
   settlement: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 interface CreateListingData {
@@ -22,6 +25,8 @@ interface CreateListingData {
   images: string[];
   condition: 'new' | 'used';
   userId: number;
+  // Додатково для моторизованої техніки:
+  motorizedSpec?: any;
 }
 
 interface UpdateListingData {
@@ -36,6 +41,8 @@ interface UpdateListingData {
   images?: string[];
   condition?: 'new' | 'used';
   active?: boolean;
+  // Додатково для моторизованої техніки:
+  motorizedSpec?: any;
 }
 
 interface ListingResult {
@@ -94,20 +101,26 @@ export const listingService = {
           if (!brand) throw new Error('Бренд не знайдений');
         }
 
-        // 3. Знайти або створити Location
+        // 3. Знайти або створити Location (з урахуванням countryId, latitude, longitude)
         let locationId: number;
-        const { regionId, communityId, settlement } = data.location;
+        const { countryId, communityId, settlement, latitude, longitude } = data.location;
         let location = await tx.location.findFirst({
           where: {
             communityId,
             settlement: settlement.trim(),
+            latitude,
+            longitude,
+            countryId,
           },
         });
         if (!location) {
           location = await tx.location.create({
             data: {
+              countryId,
               communityId,
               settlement: settlement.trim(),
+              latitude,
+              longitude,
             },
           });
         }
@@ -131,7 +144,17 @@ export const listingService = {
           },
         });
 
-        // 5. Логування дії
+        // 5. Якщо категорія моторизована — створити MotorizedSpec
+        if (data.motorizedSpec) {
+          await tx.motorizedSpec.create({
+            data: {
+              ...data.motorizedSpec,
+              listingId: listing.id,
+            },
+          });
+        }
+
+        // 6. Логування дії
         await tx.userActivity.create({
           data: {
             userId: data.userId,
@@ -189,18 +212,24 @@ export const listingService = {
       // 4. Оновлення Location, якщо потрібно
       let locationId: number | undefined = undefined;
       if (data.location) {
-        const { communityId, settlement } = data.location;
+        const { countryId, communityId, settlement, latitude, longitude } = data.location;
         let location = await prisma.location.findFirst({
           where: {
+            countryId,
             communityId,
             settlement: settlement.trim(),
+            latitude,
+            longitude,
           },
         });
         if (!location) {
           location = await prisma.location.create({
             data: {
+              countryId,
               communityId,
               settlement: settlement.trim(),
+              latitude,
+              longitude,
             },
           });
         }
@@ -208,7 +237,7 @@ export const listingService = {
       }
 
       // 5. Оновлення оголошення
-      const { location, ...dataWithoutLocation } = data;
+      const { location, motorizedSpec, ...dataWithoutLocation } = data;
       const updateData: Prisma.ListingUpdateInput = {
         ...dataWithoutLocation,
         ...(data.currency !== undefined
@@ -233,6 +262,26 @@ export const listingService = {
         where: { id },
         data: updateData,
       });
+
+      // 6. Оновлення MotorizedSpec (якщо потрібно)
+      if (motorizedSpec) {
+        const existingSpec = await prisma.motorizedSpec.findUnique({
+          where: { listingId: id },
+        });
+        if (existingSpec) {
+          await prisma.motorizedSpec.update({
+            where: { listingId: id },
+            data: motorizedSpec,
+          });
+        } else {
+          await prisma.motorizedSpec.create({
+            data: {
+              ...motorizedSpec,
+              listingId: id,
+            },
+          });
+        }
+      }
 
       logger.info(`Оголошення з ID ${id} успішно оновлено`);
       return { listing };
@@ -263,6 +312,7 @@ export const listingService = {
           brand: true,
           location: {
             include: {
+              country: true,
               community: {
                 include: {
                   region: true,
@@ -270,6 +320,7 @@ export const listingService = {
               },
             },
           },
+          motorizedSpec: true,
         },
       });
 
@@ -340,7 +391,7 @@ export const listingService = {
           lte: filters.maxPrice,
         };
       }
-      // Фільтр за регіоном, громадою, settlement
+      // Фільтр за країною, регіоном, громадою, settlement
       if (filters.regionId || filters.communityId || filters.settlement) {
         where.location = {
           ...(filters.communityId
@@ -400,6 +451,7 @@ export const listingService = {
             brand: true,
             location: {
               include: {
+                country: true,
                 community: {
                   include: {
                     region: true,
@@ -407,6 +459,7 @@ export const listingService = {
                 },
               },
             },
+            motorizedSpec: true,
           },
         }),
         prisma.listing.count({ where }),
@@ -443,6 +496,11 @@ export const listingService = {
         logger.warn(`Оголошення з ID ${id} не знайдено`);
         throw new Error('Оголошення не знайдено');
       }
+
+      // Видалити MotorizedSpec, якщо є
+      await prisma.motorizedSpec.deleteMany({
+        where: { listingId: id },
+      });
 
       await prisma.listing.delete({
         where: { id },

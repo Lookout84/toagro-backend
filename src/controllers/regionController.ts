@@ -1,25 +1,42 @@
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { regionsService } from '../services/regionsService';
-import { logger } from '../utils/logger';
 
 export const regionController = {
   /**
-   * Отримати всі області (регіони)
+   * Отримати всі області (регіони) з фільтром по країні
    */
-  async getRegions(req: Request, res: Response) {
+  async getRegions(req: Request, res: Response, next: NextFunction) {
     try {
-      const regions = await regionsService.getRegions();
+      const countryId = req.query.countryId ? Number(req.query.countryId) : undefined;
+      const regions = await regionsService.getRegions(countryId);
       res.status(200).json({
         status: 'success',
         data: regions,
       });
-    } catch (error: any) {
-      logger.error(`Помилка отримання регіонів: ${error.message}`);
-      res.status(500).json({
-        status: 'error',
-        message: 'Не вдалося отримати список регіонів',
-        details: error.message,
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * Отримати регіон за ID
+   */
+  async getRegionById(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = Number(req.params.id);
+      const region = await regionsService.getRegionById(id);
+      if (!region) {
+        return res.status(404).json({
+          status: 'error',
+          message: 'Регіон не знайдено',
+        });
+      }
+      res.status(200).json({
+        status: 'success',
+        data: region,
       });
+    } catch (error) {
+      next(error);
     }
   },
 };
