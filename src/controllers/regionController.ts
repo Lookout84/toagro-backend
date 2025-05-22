@@ -7,7 +7,9 @@ export const regionController = {
    */
   async getRegions(req: Request, res: Response, next: NextFunction) {
     try {
-      const countryId = req.query.countryId ? Number(req.query.countryId) : undefined;
+      const countryId = req.query.countryId
+        ? Number(req.query.countryId)
+        : undefined;
       const regions = await regionsService.getRegions(countryId);
       res.status(200).json({
         status: 'success',
@@ -35,6 +37,20 @@ export const regionController = {
         status: 'success',
         data: region,
       });
+    } catch (error) {
+      next(error);
+    }
+  },
+  async getRegionsByCountry(req: Request, res: Response, next: NextFunction) {
+    try {
+      const countryId = Number(req.params.countryId);
+      if (isNaN(countryId)) {
+        return res
+          .status(400)
+          .json({ status: 'error', message: 'Некоректний countryId' });
+      }
+      const regions = await regionsService.getRegions(countryId);
+      res.status(200).json({ status: 'success', data: regions });
     } catch (error) {
       next(error);
     }
