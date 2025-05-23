@@ -197,6 +197,8 @@ model Listing {
   title         String
   description   String
   price         Float
+  priceType       PriceType   @default(NETTO) // нове поле
+  vatIncluded     Boolean     @default(false) // чи включено ПДВ
   currency      Currency       @default(UAH)
   locationId    Int?
   location      Location?      @relation(fields: [locationId], references: [id])
@@ -221,6 +223,8 @@ model Country {
   id        Int        @id @default(autoincrement())
   name      String     @unique
   code      String     @unique // Наприклад: "UA", "PL"
+  latitude  Float?     // Центр країни: широта
+  longitude Float?     // Центр країни: довгота
   regions   Region[]
   locations Location[]
 }
@@ -312,6 +316,11 @@ model Category {
   parent      Category?  @relation("CategoryToCategory", fields: [parentId], references: [id])
   children    Category[] @relation("CategoryToCategory")
   listings    Listing[]
+}
+
+enum PriceType {
+  NETTO   // без ПДВ
+  BRUTTO  // з ПДВ
 }
 
 enum PaymentStatus {

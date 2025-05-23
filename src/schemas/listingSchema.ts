@@ -5,6 +5,8 @@ export const listingConditionEnum = z.enum(['new', 'used']);
 export type ListingCondition = z.infer<typeof listingConditionEnum>;
 export const currencyEnum = z.enum(['UAH', 'USD', 'EUR']);
 export type Currency = z.infer<typeof currencyEnum>;
+export const priceTypeEnum = z.enum(['NETTO', 'BRUTTO']);
+export type PriceType = z.infer<typeof priceTypeEnum>;
 
 // Перетворювач для обробки рядків і чисел
 const numberTransformer = (val: any) => {
@@ -20,7 +22,7 @@ export const locationInputSchema = z.object({
     z.number({
       required_error: "Оберіть країну",
       invalid_type_error: "ID країни має бути числом",
-    }).int().positive()
+    }).int().positive(),
   ),
   regionId: z.preprocess(
     numberTransformer,
@@ -119,12 +121,19 @@ const listingBaseSchema = {
       .positive('Ціна має бути додатнім числом')
   ),
 
+  priceType: priceTypeEnum.default('NETTO'), // Додаємо тип ціни (нетто/брутто)
+
+  vatIncluded: z.preprocess(
+    (val) => val === 'true' || val === true,
+    z.boolean().default(false)
+  ), // Додаємо прапорець "ціна з ПДВ"
+
   currency: z.preprocess(
     (val) => (typeof val === 'string' ? val.toUpperCase() : val),
     currencyEnum.default('UAH')
   ),
 
-  location: locationInputSchema, // <-- нова вкладена схема
+  location: locationInputSchema,
 
   category: z.string({
     required_error: "Категорія є обов'язковим полем",
@@ -220,6 +229,11 @@ export const listingQuerySchema = z.object({
   condition: z.preprocess(
     (val) => (typeof val === 'string' ? val.toLowerCase() : val),
     z.enum(['new', 'used']).optional()
+  ),
+  priceType: priceTypeEnum.optional(),
+  vatIncluded: z.preprocess(
+    (val) => val === 'true' || val === true,
+    z.boolean().optional()
   ),
   page: z.preprocess(
     (val) => (val ? Number(val) : 1),
