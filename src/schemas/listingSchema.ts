@@ -22,7 +22,7 @@ export const locationInputSchema = z.object({
     z.number({
       required_error: "Оберіть країну",
       invalid_type_error: "ID країни має бути числом",
-    }).int().positive(),
+    }).int().positive()
   ),
   regionId: z.preprocess(
     numberTransformer,
@@ -34,9 +34,8 @@ export const locationInputSchema = z.object({
   communityId: z.preprocess(
     numberTransformer,
     z.number({
-      required_error: "Оберіть громаду",
       invalid_type_error: "ID громади має бути числом",
-    }).int().positive()
+    }).int().positive().optional() // <-- зробити не обов'язковим
   ),
   settlement: z.string({
     required_error: "Населений пункт є обов'язковим полем",

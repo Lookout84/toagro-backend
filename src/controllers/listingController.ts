@@ -13,6 +13,8 @@ import { imageService } from '../services/imageService';
 
 const prisma = new PrismaClient();
 
+
+
 export const listingController = {
   /**
    * Створення нового оголошення
@@ -52,11 +54,61 @@ export const listingController = {
         ? uploadedFiles.map((file) => getImageUrl(file.filename))
         : [];
 
-      // 3. Підготовка даних для валідації
-      const listingData = {
-        ...req.body,
+      // --- Парсимо location, якщо він приходить як рядок ---
+      let { location, ...rest } = req.body;
+      if (typeof location === 'string') {
+        try {
+          location = JSON.parse(location);
+        } catch (e) {
+          logger.warn('Некоректний формат location');
+          location = undefined;
+        }
+      }
+
+      // Перетворюємо числові поля location на числа
+      if (location) {
+        location.countryId = Number(location.countryId);
+        location.regionId = Number(location.regionId);
+        if (location.communityId !== undefined)
+          location.communityId = Number(location.communityId);
+        if (location.latitude !== undefined)
+          location.latitude = Number(location.latitude);
+        if (location.longitude !== undefined)
+          location.longitude = Number(location.longitude);
+      }
+
+      // Якщо location не передано окремо, формуємо з плоских полів (для сумісності)
+      if (!location) {
+        const {
+          countryId,
+          regionId,
+          communityId,
+          settlement,
+          latitude,
+          longitude,
+          ...restFields
+        } = rest;
+
+        if (countryId && regionId) {
+          location = {
+            countryId: Number(countryId),
+            regionId: Number(regionId),
+            communityId: communityId ? Number(communityId) : undefined,
+            settlement: settlement || '',
+            latitude: latitude ? Number(latitude) : undefined,
+            longitude: longitude ? Number(longitude) : undefined,
+          };
+        }
+        rest = restFields;
+      }
+
+      const listingData: any = {
+        ...rest,
         images,
+        ...(location ? { location } : {}),
       };
+
+      console.log('Дані для створення оголошення:', listingData);
 
       // 4. Валідація даних
       const validationResult = createListingSchema.safeParse(listingData);
@@ -76,9 +128,10 @@ export const listingController = {
       // 5. Створення оголошення
       try {
         // Витягуємо motorizedSpec, якщо є (для моторизованих категорій)
-        const { motorizedSpec, ...listingFields } = ('motorizedSpec' in validationResult.data)
-          ? (validationResult.data as any)
-          : { ...validationResult.data };
+        const { motorizedSpec, ...listingFields } =
+          'motorizedSpec' in validationResult.data
+            ? (validationResult.data as any)
+            : { ...validationResult.data };
 
         const { listing } = await listingService.createListing({
           ...listingFields,
@@ -207,10 +260,58 @@ export const listingController = {
         );
       }
 
-      // 9. Підготовка даних для оновлення
-      const updateData = {
-        ...req.body,
+      // --- Парсимо location, якщо він приходить як рядок ---
+      let { location, ...rest } = req.body;
+      if (typeof location === 'string') {
+        try {
+          location = JSON.parse(location);
+        } catch (e) {
+          logger.warn('Некоректний формат location');
+          location = undefined;
+        }
+      }
+
+      // Перетворюємо числові поля location на числа
+      if (location) {
+        location.countryId = Number(location.countryId);
+        location.regionId = Number(location.regionId);
+        if (location.communityId !== undefined)
+          location.communityId = Number(location.communityId);
+        if (location.latitude !== undefined)
+          location.latitude = Number(location.latitude);
+        if (location.longitude !== undefined)
+          location.longitude = Number(location.longitude);
+      }
+
+      // Якщо location не передано окремо, формуємо з плоских полів (для сумісності)
+      if (!location) {
+        const {
+          countryId,
+          regionId,
+          communityId,
+          settlement,
+          latitude,
+          longitude,
+          ...restFields
+        } = rest;
+
+        if (countryId && regionId) {
+          location = {
+            countryId: Number(countryId),
+            regionId: Number(regionId),
+            communityId: communityId ? Number(communityId) : undefined,
+            settlement: settlement || '',
+            latitude: latitude ? Number(latitude) : undefined,
+            longitude: longitude ? Number(longitude) : undefined,
+          };
+        }
+        rest = restFields;
+      }
+
+      const updateData: any = {
+        ...rest,
         images: updatedImages,
+        ...(location ? { location } : {}),
       };
 
       // Видаляємо службове поле
@@ -243,13 +344,10 @@ export const listingController = {
           delete listingFields.motorizedSpec;
         }
 
-        const { listing } = await listingService.updateListing(
-          listingId,
-          {
-            ...listingFields,
-            ...(motorizedSpec ? { motorizedSpec } : {}),
-          }
-        );
+        const { listing } = await listingService.updateListing(listingId, {
+          ...listingFields,
+          ...(motorizedSpec ? { motorizedSpec } : {}),
+        });
 
         logger.info(`Оголошення з ID ${listingId} успішно оновлено`);
         res.status(200).json({

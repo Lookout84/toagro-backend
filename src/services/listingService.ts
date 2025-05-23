@@ -6,8 +6,8 @@ const prisma = new PrismaClient();
 
 interface LocationInput {
   countryId: number;
-  regionId: number;
-  communityId: number;
+  regionId: number; // додайте regionId!
+  communityId?: number;
   settlement: string;
   latitude?: number;
   longitude?: number;
@@ -103,21 +103,31 @@ export const listingService = {
 
         // 3. Знайти або створити Location (з урахуванням countryId, latitude, longitude)
         let locationId: number;
-        const { countryId, communityId, settlement, latitude, longitude } = data.location;
+        const {
+          countryId,
+          regionId,
+          communityId,
+          settlement,
+          latitude,
+          longitude,
+        } = data.location;
+
         let location = await tx.location.findFirst({
           where: {
-            communityId,
+            countryId,
+            regionId,
+            communityId: communityId ? communityId : undefined,
             settlement: settlement.trim(),
             latitude,
             longitude,
-            countryId,
           },
         });
         if (!location) {
           location = await tx.location.create({
             data: {
               countryId,
-              communityId,
+              regionId, // ДОДАЙТЕ ЦЕ ПОЛЕ!
+              communityId: communityId ? communityId : undefined,
               settlement: settlement.trim(),
               latitude,
               longitude,
@@ -212,10 +222,18 @@ export const listingService = {
       // 4. Оновлення Location, якщо потрібно
       let locationId: number | undefined = undefined;
       if (data.location) {
-        const { countryId, communityId, settlement, latitude, longitude } = data.location;
+        const {
+          countryId,
+          regionId,
+          communityId,
+          settlement,
+          latitude,
+          longitude,
+        } = data.location;
         let location = await prisma.location.findFirst({
           where: {
             countryId,
+            regionId,
             communityId,
             settlement: settlement.trim(),
             latitude,
@@ -226,6 +244,7 @@ export const listingService = {
           location = await prisma.location.create({
             data: {
               countryId,
+              regionId, // ДОДАЙТЕ ЦЕ ПОЛЕ!
               communityId,
               settlement: settlement.trim(),
               latitude,
@@ -243,10 +262,10 @@ export const listingService = {
         ...(data.currency !== undefined
           ? { currency: data.currency as any }
           : {}),
-        ...(data.condition !== undefined
-          ? { condition: data.condition }
+        ...(data.condition !== undefined ? { condition: data.condition } : {}),
+        ...(data.categoryId !== undefined
+          ? { categoryId: data.categoryId }
           : {}),
-        ...(data.categoryId !== undefined ? { categoryId: data.categoryId } : {}),
         ...(data.brandId !== undefined
           ? {
               brand:
@@ -356,9 +375,7 @@ export const listingService = {
   /**
    * Отримання списку оголошень з фільтрами
    */
-  async getListings(
-    filters: ListingQueryInput
-  ): Promise<ListingsResult> {
+  async getListings(filters: ListingQueryInput): Promise<ListingsResult> {
     try {
       logger.info('Отримання списку оголошень з фільтрами');
 
@@ -397,11 +414,14 @@ export const listingService = {
           ...(filters.communityId
             ? { community: { id: filters.communityId } }
             : {}),
-          ...(filters.regionId
-            ? { community: { regionId: filters.regionId } }
-            : {}),
+          ...(filters.regionId ? { regionId: filters.regionId } : {}),
           ...(filters.settlement
-            ? { settlement: { contains: filters.settlement, mode: 'insensitive' } }
+            ? {
+                settlement: {
+                  contains: filters.settlement,
+                  mode: 'insensitive',
+                },
+              }
             : {}),
         };
       }

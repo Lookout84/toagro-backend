@@ -197,8 +197,8 @@ model Listing {
   title         String
   description   String
   price         Float
-  priceType       PriceType   @default(NETTO) // нове поле
-  vatIncluded     Boolean     @default(false) // чи включено ПДВ
+  priceType     PriceType      @default(NETTO) // нове поле
+  vatIncluded   Boolean        @default(false) // чи включено ПДВ
   currency      Currency       @default(UAH)
   locationId    Int?
   location      Location?      @relation(fields: [locationId], references: [id])
@@ -223,8 +223,8 @@ model Country {
   id        Int        @id @default(autoincrement())
   name      String     @unique
   code      String     @unique // Наприклад: "UA", "PL"
-  latitude  Float?     // Центр країни: широта
-  longitude Float?     // Центр країни: довгота
+  latitude  Float? // Центр країни: широта
+  longitude Float? // Центр країни: довгота
   regions   Region[]
   locations Location[]
 }
@@ -236,6 +236,7 @@ model Region {
   countryId   Int
   country     Country     @relation(fields: [countryId], references: [id])
   communities Community[]
+  locations   Location[]
 }
 
 model Community {
@@ -249,11 +250,13 @@ model Community {
 }
 
 model Location {
-  id          Int       @id @default(autoincrement())
+  id          Int        @id @default(autoincrement())
   countryId   Int
-  country     Country   @relation(fields: [countryId], references: [id])
-  communityId Int
-  community   Community @relation(fields: [communityId], references: [id])
+  country     Country    @relation(fields: [countryId], references: [id])
+  regionId    Int
+  region      Region     @relation(fields: [regionId], references: [id])
+  communityId Int?
+  community   Community? @relation(fields: [communityId], references: [id])
   settlement  String
   latitude    Float? // Координати для карти
   longitude   Float?
@@ -319,8 +322,8 @@ model Category {
 }
 
 enum PriceType {
-  NETTO   // без ПДВ
-  BRUTTO  // з ПДВ
+  NETTO // без ПДВ
+  BRUTTO // з ПДВ
 }
 
 enum PaymentStatus {
