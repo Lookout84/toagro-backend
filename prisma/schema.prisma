@@ -225,43 +225,94 @@ model Country {
   code      String     @unique // Наприклад: "UA", "PL"
   latitude  Float? // Центр країни: широта
   longitude Float? // Центр країни: довгота
-  regions   Region[]
   locations Location[]
 }
+// model Country {
+//   id        Int        @id @default(autoincrement())
+//   name      String     @unique
+//   code      String     @unique // Наприклад: "UA", "PL"
+//   latitude  Float? // Центр країни: широта
+//   longitude Float? // Центр країни: довгота
+//   regions   Region[]
+//   locations Location[]
+// }
 
-model Region {
-  id          Int         @id @default(autoincrement())
-  name        String      @unique
-  code        String?     @unique
-  countryId   Int
-  country     Country     @relation(fields: [countryId], references: [id])
-  communities Community[]
-  locations   Location[]
-}
+// model Region {
+//   id          Int         @id @default(autoincrement())
+//   name        String      @unique
+//   code        String?     @unique
+//   countryId   Int
+//   country     Country     @relation(fields: [countryId], references: [id])
+//   communities Community[]
+//   locations   Location[]
+// }
 
-model Community {
-  id        Int        @id @default(autoincrement())
-  name      String // Наприклад: "Бучанська громада"
-  regionId  Int
-  region    Region     @relation(fields: [regionId], references: [id])
-  locations Location[]
+// model Community {
+//   id        Int        @id @default(autoincrement())
+//   name      String // Наприклад: "Бучанська громада"
+//   regionId  Int
+//   region    Region     @relation(fields: [regionId], references: [id])
+//   locations Location[]
 
-  @@unique([regionId, name])
-}
+//   @@unique([regionId, name])
+// }
 
+// Спрощена модель Location без зв'язків з Region та Community
 model Location {
-  id          Int        @id @default(autoincrement())
-  countryId   Int
-  country     Country    @relation(fields: [countryId], references: [id])
-  regionId    Int
-  region      Region     @relation(fields: [regionId], references: [id])
-  communityId Int?
-  community   Community? @relation(fields: [communityId], references: [id])
+  id          Int      @id @default(autoincrement())
+  countryId   Int?
+  country     Country? @relation(fields: [countryId], references: [id])
   settlement  String
-  latitude    Float? // Координати для карти
+  latitude    Float?   // Координати для карти
   longitude   Float?
+  // Нові поля для даних OpenStreetMap
+  osmId       Int?      // osm_id: 12353510
+  osmType     String?   // osm_type: "relation"
+  placeId     Int?      // place_id: 405611405
+  displayName String?   // display_name
+  addressType String?   // addresstype: "municipality"
+  boundingBox String[]  // boundingbox: ["48.3078815", "48.5082727", "27.6556703", "28.1038170"]
+  osmJsonData Json?     // Для збереження всіх даних геокодера
+  region      String?   // Тепер просто рядок
+  district    String?   // Район або громада як рядок
   listings    Listing[]
 }
+
+// model Location {
+//   id            Int        @id @default(autoincrement())
+//   countryId     Int
+//   country       Country    @relation(fields: [countryId], references: [id])
+//   regionId      Int
+//   region        Region     @relation(fields: [regionId], references: [id])
+//   communityId   Int?
+//   community     Community? @relation(fields: [communityId], references: [id])
+//   settlement    String
+//   latitude      Float? // Координати для карти
+//   longitude     Float?
+//   // Нові поля для даних OpenStreetMap
+//   osmId         Int?      // osm_id: 12353510
+//   osmType       String?   // osm_type: "relation"
+//   placeId       Int?      // place_id: 405611405
+//   displayName   String?   // display_name
+//   addressType   String?   // addresstype: "municipality"
+//   boundingBox   String[]  // boundingbox: ["48.3078815", "48.5082727", "27.6556703", "28.1038170"]
+//   osmJsonData   Json?     // Для збереження всіх даних геокодера
+//   listings      Listing[]
+// }
+
+// model Location {
+//   id          Int        @id @default(autoincrement())
+//   countryId   Int
+//   country     Country    @relation(fields: [countryId], references: [id])
+//   regionId    Int
+//   region      Region     @relation(fields: [regionId], references: [id])
+//   communityId Int?
+//   community   Community? @relation(fields: [communityId], references: [id])
+//   settlement  String
+//   latitude    Float? // Координати для карти
+//   longitude   Float?
+//   listings    Listing[]
+// }
 
 // --- КІНЕЦЬ НОВИХ МОДЕЛЕЙ ---
 

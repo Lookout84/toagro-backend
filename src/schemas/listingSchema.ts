@@ -16,27 +16,17 @@ const numberTransformer = (val: any) => {
 };
 
 // Схема для вкладеної локації (Country → Region → Community → settlement + координати)
+// Оновлена схема для спрощеної локації
 export const locationInputSchema = z.object({
   countryId: z.preprocess(
     numberTransformer,
     z.number({
       required_error: "Оберіть країну",
       invalid_type_error: "ID країни має бути числом",
-    }).int().positive()
+    }).int().positive().optional()
   ),
-  regionId: z.preprocess(
-    numberTransformer,
-    z.number({
-      required_error: "Оберіть область",
-      invalid_type_error: "ID області має бути числом",
-    }).int().positive()
-  ),
-  communityId: z.preprocess(
-    numberTransformer,
-    z.number({
-      invalid_type_error: "ID громади має бути числом",
-    }).int().positive().optional() // <-- зробити не обов'язковим
-  ),
+  region: z.string().optional(),
+  district: z.string().optional(),
   settlement: z.string({
     required_error: "Населений пункт є обов'язковим полем",
   }).min(2, 'Населений пункт повинен містити мінімум 2 символи'),
@@ -48,7 +38,47 @@ export const locationInputSchema = z.object({
     numberTransformer,
     z.number().optional()
   ),
+  osmId: z.number().int().optional(),
+  osmType: z.string().optional(),
+  placeId: z.number().int().optional(),
+  displayName: z.string().optional(),
+  addressType: z.string().optional(),
+  boundingBox: z.array(z.string()).optional(),
+  osmJsonData: z.any().optional(),
 });
+// export const locationInputSchema = z.object({
+//   countryId: z.preprocess(
+//     numberTransformer,
+//     z.number({
+//       required_error: "Оберіть країну",
+//       invalid_type_error: "ID країни має бути числом",
+//     }).int().positive()
+//   ),
+//   regionId: z.preprocess(
+//     numberTransformer,
+//     z.number({
+//       required_error: "Оберіть область",
+//       invalid_type_error: "ID області має бути числом",
+//     }).int().positive()
+//   ),
+//   communityId: z.preprocess(
+//     numberTransformer,
+//     z.number({
+//       invalid_type_error: "ID громади має бути числом",
+//     }).int().positive().optional() // <-- зробити не обов'язковим
+//   ),
+//   settlement: z.string({
+//     required_error: "Населений пункт є обов'язковим полем",
+//   }).min(2, 'Населений пункт повинен містити мінімум 2 символи'),
+//   latitude: z.preprocess(
+//     numberTransformer,
+//     z.number().optional()
+//   ),
+//   longitude: z.preprocess(
+//     numberTransformer,
+//     z.number().optional()
+//   ),
+// });
 
 // Схема для motorizedSpec (основні поля, можна розширити)
 export const motorizedSpecSchema = z.object({
