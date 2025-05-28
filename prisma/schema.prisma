@@ -216,6 +216,7 @@ model Listing {
   user          User           @relation(fields: [userId], references: [id])
   categoryRel   Category?      @relation(fields: [categoryId], references: [id])
   motorizedSpec MotorizedSpec?
+  favorite      Boolean        @default(false) // чи в обраних
 }
 
 // --- НОВІ МОДЕЛІ ДЛЯ РЕГІОНІВ ТА ГРОМАД ---
