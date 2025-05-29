@@ -36,5 +36,18 @@ router.post('/', authenticate, listingController.createListing);
 router.put('/:id', authenticate, listingController.updateListing);
 router.delete('/:id', authenticate, listingController.deleteListing);
 router.get('/user/me', authenticate, listingController.getUserListings);
+router.post(
+  '/listings/:id/favorite',
+  authenticate,
+  listingController.toggleFavorite
+);
+
+// Отримання списку обраних оголошень
+router.get(
+  '/favorites',
+  authenticate,
+  listingController.getFavorites
+);
+
 
 export default router;

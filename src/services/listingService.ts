@@ -21,16 +21,18 @@ class ListingService {
   /**
    * Створює нове оголошення
    */
-  async createListing(data: Prisma.ListingCreateInput & { 
-    motorizedSpec?: Prisma.MotorizedSpecUncheckedCreateInput;
-    location?: Prisma.LocationCreateInput;
-    userId: number;
-    categoryId?: number;
-    brandId?: number;
-  }): Promise<{ listing: any }> {
+  async createListing(
+    data: Prisma.ListingCreateInput & {
+      motorizedSpec?: Prisma.MotorizedSpecUncheckedCreateInput;
+      location?: Prisma.LocationCreateInput;
+      userId: number;
+      categoryId?: number;
+      brandId?: number;
+    }
+  ): Promise<{ listing: any }> {
     try {
       this.validateListingData(data);
-      
+
       return await prisma.$transaction(async (tx) => {
         // Перевірка категорії
         if (data.categoryId) {
@@ -80,7 +82,11 @@ class ListingService {
 
         // Додаткові дані для моторизованої техніки
         if (data.motorizedSpec) {
-          await motorizedSpecService.createSpec(listing.id, data.motorizedSpec, tx);
+          await motorizedSpecService.createSpec(
+            listing.id,
+            data.motorizedSpec,
+            tx
+          );
         }
 
         // Логування дії
@@ -107,7 +113,7 @@ class ListingService {
    */
   async updateListing(
     id: number,
-    data: Prisma.ListingUpdateInput & { 
+    data: Prisma.ListingUpdateInput & {
       motorizedSpec?: Prisma.MotorizedSpecUncheckedCreateInput;
       location?: Prisma.LocationCreateInput;
       categoryId?: number;
@@ -146,9 +152,9 @@ class ListingService {
           ...data,
           ...(locationId !== undefined ? { locationId } : {}),
           ...(data.brandId !== undefined
-            ? (data.brandId === null
-                ? { brand: { disconnect: true } }
-                : { brand: { connect: { id: data.brandId } } })
+            ? data.brandId === null
+              ? { brand: { disconnect: true } }
+              : { brand: { connect: { id: data.brandId } } }
             : {}),
         };
 
@@ -172,7 +178,11 @@ class ListingService {
 
         // Оновлення додаткових даних для моторизованої техніки
         if (data.motorizedSpec) {
-          await motorizedSpecService.upsertSpec(listing.id, data.motorizedSpec, tx);
+          await motorizedSpecService.upsertSpec(
+            listing.id,
+            data.motorizedSpec,
+            tx
+          );
         }
 
         // Логування дії
@@ -198,7 +208,10 @@ class ListingService {
   /**
    * Отримує оголошення за ID з усіма деталями
    */
-  async getListing(id: number): Promise<any> {
+  /**
+   * Отримує оголошення за ID з усіма деталями
+   */
+  async getListing(id: number, currentUserId?: number): Promise<any> {
     try {
       // Спроба отримати з кешу
       const cacheKey = `listing_${id}`;
@@ -218,11 +231,8 @@ class ListingService {
               name: true,
               email: true,
               avatar: true,
-              phone: true,
+              phoneNumber: true,
               createdAt: true,
-              telegram: true,
-              viber: true,
-              whatsapp: true,
             },
           },
           location: true,
@@ -234,7 +244,7 @@ class ListingService {
             },
           },
           motorizedSpec: true,
-          favorites: true,
+          favorites: true, // Використовуємо "favorites" замість "favorite"
         },
       });
 
@@ -268,9 +278,17 @@ class ListingService {
               logo: true,
             },
           },
-          favorites: true,
+          favorites: true, // Використовуємо "favorites" замість "favorite"
         },
       });
+
+      // Перевіряємо, чи оголошення в обраних для поточного користувача
+      let isFavorite = false;
+      if (currentUserId) {
+        isFavorite = listing.favorites.some(
+          (fav) => fav.userId === currentUserId
+        );
+      }
 
       // Обробка даних для відповіді
       const { favorites, ...listingWithoutFavorites } = listing;
@@ -278,12 +296,19 @@ class ListingService {
         listing: {
           ...listingWithoutFavorites,
           favoriteCount: favorites.length,
+          isFavorite,
         },
-        similarListings: similarListings.map(sim => {
+        similarListings: similarListings.map((sim) => {
           const { favorites: simFavs, ...simWithoutFavs } = sim;
+          // Також перевіряємо чи схожі оголошення в обраних
+          const isSimFavorite = currentUserId
+            ? simFavs.some((fav) => fav.userId === currentUserId)
+            : false;
+
           return {
             ...simWithoutFavs,
             favoriteCount: simFavs.length,
+            isFavorite: isSimFavorite,
           };
         }),
       };
@@ -302,27 +327,30 @@ class ListingService {
   /**
    * Отримує список оголошень за фільтрами
    */
-  async getListings(filters: {
-    search?: string;
-    category?: string;
-    condition?: string;
-    minPrice?: number;
-    maxPrice?: number;
-    countryId?: number;
-    regionId?: number | string;
-    communityId?: number | string;
-    sortBy?: string;
-    sortOrder?: 'asc' | 'desc';
-    page?: number;
-    limit?: number;
-    userId?: number;
-    currency?: string;
-    active?: boolean;
-    location?: {
-      latitude?: number;
-      longitude?: number;
-    };
-  }) {
+  async getListings(
+    filters: {
+      search?: string;
+      category?: string;
+      condition?: string;
+      minPrice?: number;
+      maxPrice?: number;
+      countryId?: number;
+      regionId?: number | string;
+      communityId?: number | string;
+      sortBy?: string;
+      sortOrder?: 'asc' | 'desc';
+      page?: number;
+      limit?: number;
+      userId?: number;
+      currency?: string | undefined;
+      active?: boolean;
+      location?: {
+        latitude?: number;
+        longitude?: number;
+      };
+    },
+    currentUserId?: number
+  ) {
     try {
       // Спроба отримати з кешу
       const cacheKey = this.generateCacheKey(filters);
@@ -371,7 +399,7 @@ class ListingService {
 
       // Фільтр за станом
       if (condition) {
-        where.condition = condition;
+        where.condition = condition as 'new' | 'used';
       }
 
       // Фільтр за ціною
@@ -387,7 +415,7 @@ class ListingService {
 
       // Фільтр за валютою
       if (currency) {
-        where.currency = currency;
+        where.currency = currency as Prisma.EnumCurrencyFilter<'Listing'>;
       }
 
       // Фільтр за користувачем
@@ -404,11 +432,17 @@ class ListingService {
         }
 
         if (regionId) {
-          where.location.region = { contains: String(regionId), mode: 'insensitive' };
+          where.location.region = {
+            contains: String(regionId),
+            mode: 'insensitive',
+          };
         }
 
         if (communityId) {
-          where.location.district = { contains: String(communityId), mode: 'insensitive' };
+          where.location.district = {
+            contains: String(communityId),
+            mode: 'insensitive',
+          };
         }
 
         // Геопошук по координатах (якщо потрібно)
@@ -430,7 +464,7 @@ class ListingService {
               name: true,
               email: true,
               avatar: true,
-              phone: true,
+              phoneNumber: true,
               createdAt: true,
             },
           },
@@ -442,7 +476,7 @@ class ListingService {
               logo: true,
             },
           },
-          favorites: true,
+          favorites: true, // Використовуємо "favorites" замість "favorite"
         },
         orderBy: {
           [sortBy]: sortOrder,
@@ -451,12 +485,19 @@ class ListingService {
         take: limit,
       });
 
-      // Трансформуємо результати, додаючи favoriteCount
-      const transformedListings = listings.map(listing => {
+      // Трансформуємо результати, додаючи favoriteCount і isFavorite
+      const transformedListings = listings.map((listing) => {
         const { favorites, ...rest } = listing;
+
+        // Перевіряємо, чи оголошення в обраних для поточного користувача
+        const isFavorite = currentUserId
+          ? favorites.some((fav) => fav.userId === currentUserId)
+          : false;
+
         return {
           ...rest,
           favoriteCount: favorites.length,
+          isFavorite,
         };
       });
 
@@ -483,6 +524,193 @@ class ListingService {
       throw error;
     }
   }
+  // async getListings(filters: {
+  //   search?: string;
+  //   category?: string;
+  //   condition?: string;
+  //   minPrice?: number;
+  //   maxPrice?: number;
+  //   countryId?: number;
+  //   regionId?: number | string;
+  //   communityId?: number | string;
+  //   sortBy?: string;
+  //   sortOrder?: 'asc' | 'desc';
+  //   page?: number;
+  //   limit?: number;
+  //   userId?: number;
+  //   currency?: string | undefined;
+  //   active?: boolean;
+  //   location?: {
+  //     latitude?: number;
+  //     longitude?: number;
+  //   };
+  // }) {
+  //   try {
+  //     // Спроба отримати з кешу
+  //     const cacheKey = this.generateCacheKey(filters);
+  //     const cached = listingCache.get(cacheKey);
+  //     if (cached) {
+  //       logger.debug(`Отримано з кешу список оголошень за фільтрами`);
+  //       return cached;
+  //     }
+
+  //     const {
+  //       search,
+  //       category,
+  //       condition,
+  //       minPrice,
+  //       maxPrice,
+  //       countryId,
+  //       regionId,
+  //       communityId,
+  //       sortBy = 'createdAt',
+  //       sortOrder = 'desc',
+  //       page = 1,
+  //       limit = 20,
+  //       userId,
+  //       currency,
+  //       active = true,
+  //       location,
+  //     } = filters;
+
+  //     // Формування умов where для фільтрації
+  //     const where: Prisma.ListingWhereInput = {
+  //       active,
+  //     };
+
+  //     // Пошук за текстом
+  //     if (search) {
+  //       where.OR = [
+  //         { title: { contains: search, mode: 'insensitive' } },
+  //         { description: { contains: search, mode: 'insensitive' } },
+  //       ];
+  //     }
+
+  //     // Фільтр за категорією
+  //     if (category) {
+  //       where.category = category;
+  //     }
+
+  //     // Фільтр за станом
+  //     if (condition) {
+  //       where.condition = condition as 'new' | 'used';
+  //     }
+
+  //     // Фільтр за ціною
+  //     if (minPrice !== undefined || maxPrice !== undefined) {
+  //       where.price = {};
+  //       if (minPrice !== undefined) {
+  //         where.price.gte = minPrice;
+  //       }
+  //       if (maxPrice !== undefined) {
+  //         where.price.lte = maxPrice;
+  //       }
+  //     }
+
+  //     // Фільтр за валютою
+  //     if (currency) {
+  //       where.currency = currency as Prisma.EnumCurrencyFilter<'Listing'>;
+  //     }
+
+  //     // Фільтр за користувачем
+  //     if (userId) {
+  //       where.userId = userId;
+  //     }
+
+  //     // Фільтр за місцезнаходженням
+  //     if (location || countryId || regionId || communityId) {
+  //       where.location = {};
+
+  //       if (countryId) {
+  //         where.location.countryId = countryId;
+  //       }
+
+  //       if (regionId) {
+  //         where.location.region = {
+  //           contains: String(regionId),
+  //           mode: 'insensitive',
+  //         };
+  //       }
+
+  //       if (communityId) {
+  //         where.location.district = {
+  //           contains: String(communityId),
+  //           mode: 'insensitive',
+  //         };
+  //       }
+
+  //       // Геопошук по координатах (якщо потрібно)
+  //       if (location?.latitude && location?.longitude) {
+  //         // TODO: Додати реалізацію геопошуку
+  //       }
+  //     }
+
+  //     // Отримання загальної кількості
+  //     const total = await prisma.listing.count({ where });
+
+  //     // Отримання сторінки даних
+  //     const listings = await prisma.listing.findMany({
+  //       where,
+  //       include: {
+  //         user: {
+  //           select: {
+  //             id: true,
+  //             name: true,
+  //             email: true,
+  //             avatar: true,
+  //             phoneNumber: true,
+  //             createdAt: true,
+  //           },
+  //         },
+  //         location: true,
+  //         brand: {
+  //           select: {
+  //             id: true,
+  //             name: true,
+  //             logo: true,
+  //           },
+  //         },
+  //         favorite: true,
+  //       },
+  //       orderBy: {
+  //         [sortBy]: sortOrder,
+  //       },
+  //       skip: (page - 1) * limit,
+  //       take: limit,
+  //     });
+
+  //     // Трансформуємо результати, додаючи favoriteCount
+  //     const transformedListings = listings.map((listing) => {
+  //       const { favorite, ...rest } = listing;
+  //       return {
+  //         ...rest,
+  //         favoriteCount: favorite.length,
+  //       };
+  //     });
+
+  //     // Формування результату
+  //     const result = {
+  //       listings: transformedListings,
+  //       pagination: {
+  //         total,
+  //         page,
+  //         limit,
+  //         totalPages: Math.ceil(total / limit),
+  //       },
+  //     };
+
+  //     // Збереження в кеш (тільки перші 5 сторінок)
+  //     if (page <= 5) {
+  //       listingCache.set(cacheKey, result);
+  //       logger.debug(`Список оголошень збережено в кеш (сторінка ${page})`);
+  //     }
+
+  //     return result;
+  //   } catch (error) {
+  //     logger.error('Помилка отримання списку оголошень', { error, filters });
+  //     throw error;
+  //   }
+  // }
 
   /**
    * Видаляє оголошення за ID
@@ -503,9 +731,14 @@ class ListingService {
         if (listing.images && listing.images.length > 0) {
           try {
             await imageService.deleteImages(listing.images);
-            logger.info(`Видалено ${listing.images.length} зображень для оголошення ${id}`);
+            logger.info(
+              `Видалено ${listing.images.length} зображень для оголошення ${id}`
+            );
           } catch (imageError) {
-            logger.warn('Помилка видалення зображень', { error: imageError, images: listing.images });
+            logger.warn('Помилка видалення зображень', {
+              error: imageError,
+              images: listing.images,
+            });
             // Продовжуємо процес видалення навіть якщо зображення не вдалося видалити
           }
         }
@@ -518,12 +751,7 @@ class ListingService {
         await tx.listing.delete({ where: { id } });
 
         // Логування дії
-        await this.logUserActivity(
-          listing.userId,
-          'DELETE_LISTING',
-          id,
-          tx
-        );
+        await this.logUserActivity(listing.userId, 'DELETE_LISTING', id, tx);
       });
 
       // Очистити кеш
@@ -552,7 +780,11 @@ class ListingService {
 
       return listing.userId === userId;
     } catch (error) {
-      logger.error('Помилка перевірки власника оголошення', { error, listingId, userId });
+      logger.error('Помилка перевірки власника оголошення', {
+        error,
+        listingId,
+        userId,
+      });
       return false;
     }
   }
@@ -584,7 +816,9 @@ class ListingService {
             },
           },
         });
-        logger.info(`Користувач ${userId} видалив оголошення ${listingId} з обраних`);
+        logger.info(
+          `Користувач ${userId} видалив оголошення ${listingId} з обраних`
+        );
         return { isFavorite: false };
       } else {
         // Додавання в обрані
@@ -607,16 +841,24 @@ class ListingService {
             type: 'FAVORITE_ADDED' as any,
             subject: 'Нове додавання в обрані',
             content: `Ваше оголошення "${listing.title}" додано в обрані`,
-            metadata: { listingId } as Prisma.JsonValue,
+            metadata: { listingId: listingId },
           });
-          logger.info(`Надіслано повідомлення власнику оголошення ${listingId}`);
+          logger.info(
+            `Надіслано повідомлення власнику оголошення ${listingId}`
+          );
         }
 
-        logger.info(`Користувач ${userId} додав оголошення ${listingId} в обрані`);
+        logger.info(
+          `Користувач ${userId} додав оголошення ${listingId} в обрані`
+        );
         return { isFavorite: true };
       }
     } catch (error) {
-      logger.error('Помилка при роботі з обраними', { error, listingId, userId });
+      logger.error('Помилка при роботі з обраними', {
+        error,
+        listingId,
+        userId,
+      });
       throw error;
     }
   }
@@ -648,6 +890,9 @@ class ListingService {
         },
         skip: (page - 1) * limit,
         take: limit,
+        orderBy: {
+          createdAt: 'desc', // Сортування за часом додавання в обрані
+        },
       });
 
       const listings = favorites
@@ -655,9 +900,9 @@ class ListingService {
         .map((fav) => ({
           ...fav.listing,
           isFavorite: true,
+          addedToFavoritesAt: fav.createdAt, // Додаємо дату додавання в обрані
         }));
 
-      logger.info(`Отримано ${listings.length} обраних оголошень для користувача ${userId}`);
       return {
         listings,
         pagination: {
@@ -670,6 +915,45 @@ class ListingService {
     } catch (error) {
       logger.error('Помилка отримання обраних оголошень', { error, userId });
       throw error;
+    }
+  }
+
+  /**
+   * Перевіряє, чи є оголошення в обраних у користувача
+   */
+  async isListingFavorite(listingId: number, userId: number): Promise<boolean> {
+    try {
+      const favorite = await prisma.favorite.findUnique({
+        where: {
+          userId_listingId: {
+            userId,
+            listingId,
+          },
+        },
+      });
+
+      return !!favorite;
+    } catch (error) {
+      logger.error('Помилка перевірки обраного оголошення', {
+        error,
+        listingId,
+        userId,
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Отримує кількість користувачів, що додали оголошення в обрані
+   */
+  async getFavoriteCount(listingId: number): Promise<number> {
+    try {
+      return await prisma.favorite.count({
+        where: { listingId },
+      });
+    } catch (error) {
+      logger.error('Помилка отримання кількості обраних', { error, listingId });
+      return 0;
     }
   }
 
@@ -693,7 +977,9 @@ class ListingService {
       });
 
       if (expiredListings.length > 0) {
-        logger.info(`Деактивація ${expiredListings.length} застарілих оголошень`);
+        logger.info(
+          `Деактивація ${expiredListings.length} застарілих оголошень`
+        );
 
         await prisma.listing.updateMany({
           where: {
@@ -709,13 +995,15 @@ class ListingService {
             type: 'LISTING_EXPIRED' as any,
             subject: 'Оголошення деактивовано',
             content: `Ваше оголошення "${listing.title}" було деактивовано через ${expireDays} днів неактивності`,
-            metadata: { listingId: listing.id } as Prisma.JsonValue,
+            metadata: { listingId: listing.id },
           });
         }
 
         // Очистити кеш
         listingCache.flushAll();
-        logger.info('Кеш оголошень очищено після деактивації застарілих оголошень');
+        logger.info(
+          'Кеш оголошень очищено після деактивації застарілих оголошень'
+        );
       }
     } catch (error) {
       logger.error('Помилка перевірки застарілих оголошень', { error });
@@ -728,7 +1016,7 @@ class ListingService {
   private validateListingData(data: any): void {
     // Валідація заголовка
     if (!data.title || data.title.trim().length === 0) {
-      throw new Error('Заголовок є обов\'язковим полем');
+      throw new Error("Заголовок є обов'язковим полем");
     }
     if (data.title.length > 100) {
       throw new Error('Заголовок не повинен перевищувати 100 символів');
@@ -741,7 +1029,7 @@ class ListingService {
 
     // Валідація ціни
     if (typeof data.price !== 'number' || data.price < 0) {
-      throw new Error('Ціна повинна бути невід\'ємним числом');
+      throw new Error("Ціна повинна бути невід'ємним числом");
     }
 
     // Санітизація тексту
@@ -762,9 +1050,8 @@ class ListingService {
   ): Promise<{ id: number }> {
     try {
       // Санітизація даних
-      const settlement = typeof data.settlement === 'string' 
-        ? data.settlement.trim() 
-        : '';
+      const settlement =
+        typeof data.settlement === 'string' ? data.settlement.trim() : '';
 
       // Формування умов пошуку
       const where: Prisma.LocationWhereInput = {
@@ -784,10 +1071,10 @@ class ListingService {
       // Якщо не знайдено, створюємо нову
       if (!location) {
         logger.debug('Створення нової локації');
-        
+
         location = await tx.location.create({
           data: {
-            countryId: data.countryId ? Number(data.countryId) : undefined,
+            country: data.country,
             settlement,
             latitude: data.latitude ? Number(data.latitude) : undefined,
             longitude: data.longitude ? Number(data.longitude) : undefined,
@@ -798,8 +1085,8 @@ class ListingService {
             placeId: data.placeId ? Number(data.placeId) : undefined,
             displayName: data.displayName as string,
             addressType: data.addressType as string,
-            boundingBox: data.boundingBox as string[] || [],
-            osmJsonData: data.osmJsonData as Prisma.JsonValue,
+            boundingBox: (data.boundingBox as string[]) || [],
+            osmJsonData: data.osmJsonData as Prisma.InputJsonValue,
           },
         });
       }
@@ -814,7 +1101,10 @@ class ListingService {
   /**
    * Перевіряє існування категорії
    */
-  private async validateCategory(categoryId: number, tx: Prisma.TransactionClient): Promise<void> {
+  private async validateCategory(
+    categoryId: number,
+    tx: Prisma.TransactionClient
+  ): Promise<void> {
     const category = await tx.category.findUnique({
       where: { id: categoryId },
     });
@@ -827,7 +1117,10 @@ class ListingService {
   /**
    * Перевіряє існування бренду
    */
-  private async validateBrand(brandId: number, tx: Prisma.TransactionClient): Promise<void> {
+  private async validateBrand(
+    brandId: number,
+    tx: Prisma.TransactionClient
+  ): Promise<void> {
     const brand = await tx.brand.findUnique({
       where: { id: brandId },
     });
@@ -852,10 +1145,12 @@ class ListingService {
         action,
         resourceId,
         resourceType: 'LISTING',
-        metadata: { listingId: resourceId } as Prisma.JsonValue,
+        metadata: { listingId: resourceId } as Prisma.InputJsonValue,
       },
     });
-    logger.debug(`Дія ${action} користувача ${userId} для оголошення ${resourceId} записана`);
+    logger.debug(
+      `Дія ${action} користувача ${userId} для оголошення ${resourceId} записана`
+    );
   }
 
   /**
@@ -878,8 +1173,6 @@ class ListingService {
 
 // Експорт екземпляра сервісу
 export const listingService = new ListingService();
-
-
 
 // import { Prisma, PrismaClient } from '@prisma/client';
 // import { logger } from '../utils/logger';
@@ -1158,7 +1451,6 @@ export const listingService = new ListingService();
 //       throw error;
 //     }
 //   }
-
 
 //   async upsertSpec(
 //     listingId: number,
@@ -1847,7 +2139,6 @@ export const listingService = new ListingService();
 
 // export const listingService = new ListingService();
 
-
 // // import { Prisma, PrismaClient } from '@prisma/client';
 // // import { logger } from '../utils/logger';
 // // import {
@@ -1870,10 +2161,10 @@ export const listingService = new ListingService();
 // //   async createListing(data: CreateListingData): Promise<ListingResult> {
 // //     try {
 // //       logger.info('Створення нового оголошення');
-      
+
 // //       return await prisma.$transaction(async (tx) => {
 // //         logger.debug('Розпочато транзакцію для створення оголошення');
-        
+
 // //         // 1. Перевірка категорії
 // //         if (data.categoryId) {
 // //           const category = await tx.category.findUnique({
@@ -1881,7 +2172,7 @@ export const listingService = new ListingService();
 // //           });
 // //           if (!category) throw new Error('Категорія не знайдена');
 // //         }
-        
+
 // //         // 2. Перевірка бренду, якщо вказано
 // //         if (data.brandId) {
 // //           const brand = await tx.brand.findUnique({
@@ -1892,7 +2183,7 @@ export const listingService = new ListingService();
 
 // //         // 3. Створення або пошук Location, якщо потрібно
 // //         let locationId: number | undefined = undefined;
-        
+
 // //         if (data.location) {
 // //           const {
 // //             countryId,
@@ -1914,7 +2205,7 @@ export const listingService = new ListingService();
 // //           let locationFilter: any = {
 // //             settlement: settlement.trim(),
 // //           };
-          
+
 // //           // Додаємо додаткові поля для унікальності, якщо вони є
 // //           if (latitude !== undefined && longitude !== undefined) {
 // //             locationFilter.latitude = latitude;
@@ -1927,11 +2218,11 @@ export const listingService = new ListingService();
 // //           let location = await tx.location.findFirst({
 // //             where: locationFilter,
 // //           });
-          
+
 // //           // Якщо не знайдено, створюємо нову
 // //           if (!location) {
 // //             logger.info('Створення нового Location для оголошення');
-            
+
 // //             location = await tx.location.create({
 // //               data: {
 // //                 countryId,
@@ -1950,7 +2241,7 @@ export const listingService = new ListingService();
 // //               },
 // //             });
 // //           }
-          
+
 // //           locationId = location.id;
 // //         }
 
@@ -2064,7 +2355,7 @@ export const listingService = new ListingService();
 // //         let locationFilter: any = {
 // //           settlement: settlement.trim(),
 // //         };
-        
+
 // //         // Додаємо додаткові поля для унікальності, якщо вони є
 // //         if (latitude !== undefined && longitude !== undefined) {
 // //           locationFilter.latitude = latitude;
@@ -2077,7 +2368,7 @@ export const listingService = new ListingService();
 // //         let location = await prisma.location.findFirst({
 // //           where: locationFilter,
 // //         });
-        
+
 // //         // Якщо не знайдено, створюємо нову
 // //         if (!location) {
 // //           location = await prisma.location.create({
@@ -2098,7 +2389,7 @@ export const listingService = new ListingService();
 // //             },
 // //           });
 // //         }
-        
+
 // //         locationId = location.id;
 // //       }
 
@@ -2244,24 +2535,24 @@ export const listingService = new ListingService();
 // //       // Фільтр за місцезнаходженням
 // //       if (location || countryId || regionId) {
 // //         where.location = {};
-        
+
 // //         if (countryId) {
 // //           where.location.countryId = countryId;
 // //         }
-        
+
 // //         // Для зворотної сумісності, тепер шукаємо по текстових полях
 // //         if (regionId) {
 // //           where.OR = [
 // //             { location: { region: { contains: String(regionId), mode: 'insensitive' } } },
 // //           ];
 // //         }
-        
+
 // //         if (communityId) {
 // //           where.OR = [
 // //             { location: { district: { contains: String(communityId), mode: 'insensitive' } } },
 // //           ];
 // //         }
-        
+
 // //         // Якщо передано новий формат location з координатами
 // //         if (location?.latitude && location?.longitude) {
 // //           // TODO: додати геопошук по координатах (наприклад, в радіусі N км)
