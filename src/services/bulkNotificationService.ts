@@ -555,13 +555,13 @@ class BulkNotificationService {
         }
       );
     } else {
-      await notificationService.sendEmailNotification(
-        user.id,
-        user.email,
+      await notificationService.sendEmailNotification({
+        userId: user.id,
+        email: user.email,
         subject,
         content,
-        { priority: task.priority }
-      );
+        priority: task.priority
+      });
     }
   }
 
@@ -577,12 +577,12 @@ class BulkNotificationService {
       throw new Error(`User ${user.id} has no phone number`);
     }
 
-    await notificationService.sendSmsNotification(
-      user.id,
-      user.phoneNumber,
-      content,
-      task.priority
-    );
+    await notificationService.sendSmsNotification({
+      userId: user.id,
+      phoneNumber: user.phoneNumber,
+      content: content,
+      priority: task.priority
+    });
   }
 
   /**
@@ -604,14 +604,13 @@ class BulkNotificationService {
 
     for (const deviceToken of deviceTokens) {
       try {
-        await notificationService.sendPushNotification(
-          user.id,
+        await notificationService.sendPushNotification({
+          userId: user.id,
           deviceToken,
-          title || 'Notification',
+          title: title || 'Notification',
           content,
-          undefined,
-          task.priority
-        );
+          priority: task.priority
+        });
         successCount++;
       } catch (error) {
         logger.error(

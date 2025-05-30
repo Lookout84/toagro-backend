@@ -303,17 +303,17 @@ class ScheduledTaskService {
         logger.info(`Listing ${listingId} deactivated automatically`);
         
         if (listing.user && listing.user.email) {
-          await notificationService.sendEmailNotification(
-            listing.user.id,
-            listing.user.email,
-            'Ваше оголошення деактивовано',
-            `
-              <h1>Привіт, ${listing.user.name || 'користувач'}!</h1>
-              <p>Ваше оголошення "${listing.title}" було автоматично деактивовано.</p>
-              <p>Якщо ви бажаєте відновити його, будь ласка, увійдіть до свого облікового запису та активуйте його знову.</p>
-            `
-          );
-        }
+            await notificationService.sendEmailNotification({
+              userId: listing.user.id,
+              email: listing.user.email,
+              subject: 'Ваше оголошення деактивовано',
+              content: `
+                <h1>Привіт, ${listing.user.name || 'користувач'}!</h1>
+                <p>Ваше оголошення "${listing.title}" було автоматично деактивовано.</p>
+                <p>Якщо ви бажаєте відновити його, будь ласка, увійдіть до свого облікового запису та активуйте його знову.</p>
+              `
+            });
+          }
       } else {
         logger.info(`Listing ${listingId} is already inactive`);
       }
@@ -352,16 +352,16 @@ class ScheduledTaskService {
       
       if (payment.status === 'PENDING') {
         if (payment.user && payment.user.email) {
-          await notificationService.sendEmailNotification(
-            payment.user.id,
-            payment.user.email,
-            'Нагадування про незавершений платіж',
-            `
+          await notificationService.sendEmailNotification({
+            userId: payment.user.id,
+            email: payment.user.email,
+            subject: 'Нагадування про незавершений платіж',
+            content: `
               <h1>Привіт, ${payment.user.name || 'користувач'}!</h1>
               <p>У вас є незавершений платіж на суму ${payment.amount} ${payment.currency}.</p>
               <p>Щоб завершити платіж, перейдіть за <a href="http://localhost:3000/payments/${payment.transactionId}">посиланням</a>.</p>
             `
-          );
+          });
           
           logger.info(`Payment reminder sent for user ${userId}, payment ${paymentId}`);
         } else {
@@ -397,15 +397,15 @@ class ScheduledTaskService {
       });
       
       if (listing?.user) {
-        await notificationService.sendEmailNotification(
-          listing.user.id,
-          listing.user.email,
-          'Підвищення оголошення завершено',
-          `
+        await notificationService.sendEmailNotification({
+          userId: listing.user.id,
+          email: listing.user.email,
+          subject: 'Підвищення оголошення завершено',
+          content: `
             <h1>Привіт, ${listing.user.name || 'користувач'}!</h1>
             <p>Період підвищення вашого оголошення "${listing.title}" завершився.</p>
           `
-        );
+        });
       }
       
       return true;
@@ -428,15 +428,15 @@ class ScheduledTaskService {
       });
       
       if (user?.email) {
-        await notificationService.sendEmailNotification(
+        await notificationService.sendEmailNotification({
           userId,
-          user.email,
-          'Ваша підписка завершилася',
-          `
+          email: user.email,
+          subject: 'Ваша підписка завершилася',
+          content: `
             <h1>Привіт, ${user.name || 'користувач'}!</h1>
             <p>Ваша підписка на ToAgro завершилася. Будь ласка, продовжіть її для доступу до всіх функцій.</p>
           `
-        );
+        });
       }
       
       return true;
@@ -499,12 +499,12 @@ class ScheduledTaskService {
             .replace(/{{name}}/g, user.name || 'користувач')
             .replace(/{{email}}/g, user.email);
           
-          await notificationService.sendEmailNotification(
-            user.id,
-            user.email,
+          await notificationService.sendEmailNotification({
+            userId: user.id,
+            email: user.email,
             subject,
-            personalizedContent
-          );
+            content: personalizedContent
+          });
           
           successCount++;
         } catch (error) {

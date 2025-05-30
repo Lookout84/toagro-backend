@@ -36,7 +36,7 @@ import notificationRoutes from './routes/notifications';
 import queueRoutes from './routes/queues';
 import campaignRoutes from './routes/campaigns';
 import brandRoutes from './routes/brand';
-import regionsRouter from './routes/regions';
+// import regionsRouter from './routes/regions';
 import motorizedSpecRouter from './routes/motorizedSpec';
 import countriesRouter from './routes/countries';
 // Функція для перевірки доступності порту
@@ -412,7 +412,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/queues', queueRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/brands', brandRoutes);
-app.use('/api/regions', regionsRouter);
+// app.use('/api/regions', regionsRouter);
 app.use('/api/motorized-spec', motorizedSpecRouter);
 app.use('/api/countries', countriesRouter);
 // Error handling

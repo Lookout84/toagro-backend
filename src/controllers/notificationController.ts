@@ -66,16 +66,16 @@ export const notificationController = {
       }
       
       // Відправляємо тестовий email
-      const success = await notificationService.sendEmailNotification(
+      const success = await notificationService.sendEmailNotification({
         userId,
-        user.email,
-        'Тестове сповіщення',
-        `
+        email: user.email,
+        subject: 'Тестове сповіщення',
+        content: `
           <h1>Привіт, ${user.name || 'користувач'}!</h1>
           <p>Це тестове сповіщення з ToAgro.</p>
           <p>Час відправки: ${new Date().toLocaleString()}</p>
         `
-      );
+      });
       
       if (success) {
         res.status(200).json({
@@ -114,11 +114,11 @@ export const notificationController = {
       }
       
       // Відправляємо тестове SMS
-      const success = await notificationService.sendSmsNotification(
+      const success = await notificationService.sendSmsNotification({
         userId,
-        user.phoneNumber,
-        `ToAgro: Привіт, ${user.name || 'користувач'}! Це тестове SMS сповіщення.`
-      );
+        phoneNumber: user.phoneNumber,
+        content: `ToAgro: Привіт, ${user.name || 'користувач'}! Це тестове SMS сповіщення.`
+      });
       
       if (success) {
         res.status(200).json({
@@ -165,12 +165,12 @@ export const notificationController = {
       }
       
       // Відправляємо тестове Push-сповіщення
-      const success = await notificationService.sendPushNotification(
+      const success = await notificationService.sendPushNotification({
         userId,
         deviceToken,
-        'Тестове сповіщення',
-        `Привіт, ${user.name || 'користувач'}! Це тестове Push-сповіщення.`
-      );
+        title: 'Тестове сповіщення',
+        content: `Привіт, ${user.name || 'користувач'}! Це тестове Push-сповіщення.`
+      });
       
       if (success) {
         res.status(200).json({
@@ -510,31 +510,33 @@ export const notificationController = {
       
       switch (type) {
         case 'email':
-          success = await notificationService.sendEmailNotification(
+          const emailResult = await notificationService.sendEmailNotification({
             userId,
             email,
             subject,
             content,
-            { priority }
-          );
+            priority
+          });
+          success = !!emailResult;
           break;
         case 'sms':
-          success = await notificationService.sendSmsNotification(
+          const smsNotification = await notificationService.sendSmsNotification({
             userId,
             phoneNumber,
             content,
             priority
-          );
+          });
+          success = !!smsNotification;
           break;
         case 'push':
-          success = await notificationService.sendPushNotification(
+          const pushNotification = await notificationService.sendPushNotification({
             userId,
             deviceToken,
-            subject,
+            title: subject,
             content,
-            undefined,
             priority
-          );
+          });
+          success = !!pushNotification;
           break;
         default:
           return res.status(400).json({
