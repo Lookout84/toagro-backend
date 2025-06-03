@@ -175,11 +175,77 @@ model User {
   createdCampaigns    Campaign[]
   UserActivity        UserActivity[]
   favorites           Favorite[]
+  companyProfile      CompanyProfile?
 }
 
 enum UserRole {
   USER
+  COMPANY
   ADMIN
+}
+
+model CompanyProfile {
+  id          Int          @id @default(autoincrement())
+  userId      Int          @unique
+  user        User         @relation(fields: [userId], references: [id])
+  companyName String
+  companyCode String       @unique // ЄДРПОУ або інший код компанії
+  vatNumber   String?      @unique // ІПН
+  website     String?
+  industry    String?
+  foundedYear Int?
+  size        CompanySize? @default(SMALL)
+  description String?      @db.Text
+  logoUrl     String?
+
+  // Адреса як JSON
+  address Json?
+
+  // Контактна інформація як JSON
+  contactInfo Json?
+
+  isVerified Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Документи для верифікації
+  documents CompanyDocument[]
+
+  // Додайте зв'язок з CompanyAddress
+  companyAddress CompanyAddress?
+}
+
+enum CompanySize {
+  SMALL
+  MEDIUM
+  LARGE
+}
+
+model CompanyDocument {
+  id              Int      @id @default(autoincrement())
+  companyId       Int
+  company         CompanyProfile @relation(fields: [companyId], references: [id])
+  name            String
+  type            String   // certificate, license, registration, etc.
+  fileUrl         String
+  isVerified      Boolean  @default(false)
+  verifiedAt      DateTime?
+  verifiedById    Int?
+  uploadedAt      DateTime @default(now())
+  expiresAt       DateTime?
+}
+
+model CompanyAddress {
+  id              Int      @id @default(autoincrement())
+  companyId       Int      @unique
+  company         CompanyProfile @relation(fields: [companyId], references: [id])
+  country         String
+  region          String?
+  city            String
+  street          String?
+  postalCode      String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model UserActivity {
@@ -198,11 +264,11 @@ model Favorite {
   userId    Int
   listingId Int
   createdAt DateTime @default(now())
-  
+
   // Зв'язки з іншими моделями
-  user      User     @relation(fields: [userId], references: [id])
-  listing   Listing  @relation(fields: [listingId], references: [id])
-  
+  user    User    @relation(fields: [userId], references: [id])
+  listing Listing @relation(fields: [listingId], references: [id])
+
   // Унікальний індекс щоб користувач міг додати оголошення в обрані лише один раз
   @@unique([userId, listingId])
 }
@@ -231,7 +297,7 @@ model Listing {
   user          User           @relation(fields: [userId], references: [id])
   categoryRel   Category?      @relation(fields: [categoryId], references: [id])
   motorizedSpec MotorizedSpec?
-  favorites      Favorite[]
+  favorites     Favorite[]
 }
 
 // --- НОВІ МОДЕЛІ ДЛЯ РЕГІОНІВ ТА ГРОМАД ---
@@ -243,6 +309,7 @@ model Country {
   longitude Float? // Центр країни: довгота
   locations Location[]
 }
+
 // model Country {
 //   id        Int        @id @default(autoincrement())
 //   name      String     @unique
@@ -275,22 +342,22 @@ model Country {
 
 // Спрощена модель Location без зв'язків з Region та Community
 model Location {
-  id          Int      @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   countryId   Int?
-  country     Country? @relation(fields: [countryId], references: [id])
+  country     Country?  @relation(fields: [countryId], references: [id])
   settlement  String
-  latitude    Float?   // Координати для карти
+  latitude    Float? // Координати для карти
   longitude   Float?
   // Нові поля для даних OpenStreetMap
-  osmId       Int?      // osm_id: 12353510
-  osmType     String?   // osm_type: "relation"
-  placeId     Int?      // place_id: 405611405
-  displayName String?   // display_name
-  addressType String?   // addresstype: "municipality"
-  boundingBox String[]  // boundingbox: ["48.3078815", "48.5082727", "27.6556703", "28.1038170"]
-  osmJsonData Json?     // Для збереження всіх даних геокодера
-  region      String?   // Тепер просто рядок
-  district    String?   // Район або громада як рядок
+  osmId       Int? // osm_id: 12353510
+  osmType     String? // osm_type: "relation"
+  placeId     Int? // place_id: 405611405
+  displayName String? // display_name
+  addressType String? // addresstype: "municipality"
+  boundingBox String[] // boundingbox: ["48.3078815", "48.5082727", "27.6556703", "28.1038170"]
+  osmJsonData Json? // Для збереження всіх даних геокодера
+  region      String? // Тепер просто рядок
+  district    String? // Район або громада як рядок
   listings    Listing[]
 }
 

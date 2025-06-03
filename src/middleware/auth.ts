@@ -55,7 +55,6 @@ declare global {
 //   }
 // };
 
-
 export const authenticate = async (
   req: Request,
   res: Response,
@@ -91,22 +90,32 @@ export const authenticate = async (
         details: 'Токен відсутній',
       });
     }
-    
-    // Перевіряємо токен
-    const decoded = jwt.verify(token, config.jwtSecret) as TokenPayload;
 
-    // Зберігаємо інформацію про користувача в запиті (декілька варіантів для сумісності)
-    (req as any).user = {
-      id: decoded.userId,       // Додаємо id для доступу через req.user.id
-      userId: decoded.userId,   // Додаємо userId для доступу через req.user.userId
-      role: decoded.role
+    // Перевіряємо токен
+    // const decoded = jwt.verify(token, config.jwtSecret) as TokenPayload;
+
+    // // Зберігаємо інформацію про користувача в запиті (декілька варіантів для сумісності)
+    // (req as any).user = {
+    //   id: decoded.userId,       // Додаємо id для доступу через req.user.id
+    //   userId: decoded.userId,   // Додаємо userId для доступу через req.user.userId
+    //   role: decoded.role
+    // };
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as {
+      userId: number;
+      role: 'USER' | 'COMPANY' | 'ADMIN';
     };
-    
+
+    (req as any).user = { id: decoded.userId, role: decoded.role };
+    req.userId = decoded.userId;
+
     // Встановлюємо також userId безпосередньо в req
     req.userId = decoded.userId;
     req.userRole = decoded.role;
 
-    logger.debug(`Автентифікація успішна. UserId: ${decoded.userId}, UserRole: ${decoded.role}`);
+    logger.debug(
+      `Автентифікація успішна. UserId: ${decoded.userId}, UserRole: ${decoded.role}`
+    );
     next();
   } catch (error: any) {
     if (error.name === 'TokenExpiredError') {

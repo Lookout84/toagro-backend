@@ -3,7 +3,10 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { prisma } from '../config/db';
 import { config } from '../config/env';
-import { sendVerificationEmail, sendPasswordResetEmail } from '../utils/emailSender';
+import {
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+} from '../utils/emailSender';
 import { logger } from '../utils/logger';
 
 interface RegisterData {
@@ -62,9 +65,7 @@ export const userService = {
     const token = jwt.sign(
       { userId: user.id, role: user.role },
       config.jwtSecret,
-      { expiresIn: config.jwtExpiresIn,
-        algorithm: 'HS256'  
-      } as jwt.SignOptions
+      { expiresIn: config.jwtExpiresIn, algorithm: 'HS256' } as jwt.SignOptions
     );
 
     return {
@@ -101,9 +102,7 @@ export const userService = {
     const token = jwt.sign(
       { userId: user.id, role: user.role },
       config.jwtSecret,
-      { expiresIn: config.jwtExpiresIn,
-        algorithm: 'HS256'
-      } as jwt.SignOptions
+      { expiresIn: config.jwtExpiresIn, algorithm: 'HS256' } as jwt.SignOptions
     );
 
     return {
@@ -201,7 +200,11 @@ export const userService = {
     };
   },
 
-  async changePassword(userId: number, currentPassword: string, newPassword: string) {
+  async changePassword(
+    userId: number,
+    currentPassword: string,
+    newPassword: string
+  ) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
     });
@@ -211,7 +214,10 @@ export const userService = {
     }
 
     // Check current password
-    const isPasswordValid = await bcrypt.compare(currentPassword, user.passwordHash);
+    const isPasswordValid = await bcrypt.compare(
+      currentPassword,
+      user.passwordHash
+    );
     if (!isPasswordValid) {
       throw new Error('Current password is incorrect');
     }
@@ -271,5 +277,43 @@ export const userService = {
     }
 
     return { user };
+  },
+
+  /**
+   * Оновлює роль користувача
+   */
+  async updateUserRole(
+    userId: number,
+    role: 'USER' | 'COMPANY' | 'ADMIN'
+  ): Promise<import('@prisma/client').User> {
+    try {
+      const user = await prisma.user.update({
+        where: { id: userId },
+        data: { role },
+      });
+      logger.info(`Updated role for user ${userId} to ${role}`);
+      return user;
+    } catch (error) {
+      logger.error('Failed to update user role', { error, userId });
+      throw error;
+    }
+  },
+
+  /**
+   * Перевіряє, чи має користувач профіль компанії
+   */
+  async hasCompanyProfile(userId: number): Promise<boolean> {
+    try {
+      const profile = await prisma.companyProfile.findUnique({
+        where: { userId },
+      });
+      return !!profile;
+    } catch (error) {
+      logger.error('Failed to check if user has company profile', {
+        error,
+        userId,
+      });
+      throw error;
+    }
   },
 };

@@ -39,6 +39,7 @@ import brandRoutes from './routes/brand';
 // import regionsRouter from './routes/regions';
 import motorizedSpecRouter from './routes/motorizedSpec';
 import countriesRouter from './routes/countries';
+import companyRoutes from './routes/companyRoutes';
 // Функція для перевірки доступності порту
 const isPortAvailable = (port: number): Promise<boolean> => {
   return new Promise((resolve) => {
@@ -415,6 +416,7 @@ app.use('/api/brands', brandRoutes);
 // app.use('/api/regions', regionsRouter);
 app.use('/api/motorized-spec', motorizedSpecRouter);
 app.use('/api/countries', countriesRouter);
+app.use('/api', companyRoutes);
 // Error handling
 app.use(handleMulterError);
 app.use(errorHandler);
