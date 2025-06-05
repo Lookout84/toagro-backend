@@ -8,6 +8,7 @@ import {
   sendPasswordResetEmail,
 } from '../utils/emailSender';
 import { logger } from '../utils/logger';
+import type { User } from '@prisma/client';
 
 interface RegisterData {
   email: string;
@@ -28,57 +29,110 @@ interface UpdateUserData {
 }
 
 export const userService = {
-  async register(data: RegisterData) {
-    const { email, password, name, phoneNumber } = data;
-
-    // Check if user exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
+  async register(userData: {
+  email: string;
+  password: string;
+  name: string;
+  phoneNumber?: string;
+}): Promise<User> {
+  try {
+    // Перевірка, чи існує користувач з таким email
+    const existingUserByEmail = await prisma.user.findUnique({
+      where: { email: userData.email },
     });
 
-    if (existingUser) {
+    if (existingUserByEmail) {
       throw new Error('User with this email already exists');
     }
 
-    // Hash password
-    const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash(password, salt);
+    // Перевірка унікальності номера телефону (якщо він вказаний)
+    if (userData.phoneNumber) {
+      const existingUserByPhone = await prisma.user.findUnique({
+        where: { phoneNumber: userData.phoneNumber },
+      });
 
-    // Generate verification token
+      if (existingUserByPhone) {
+        throw new Error('User with this phone number already exists');
+      }
+    }
+
+    // Хешування пароля
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(userData.password, salt);
+
+    // Генерація токена верифікації
     const verificationToken = crypto.randomBytes(32).toString('hex');
 
-    // Create user
+    // Створення користувача з правильною обробкою phoneNumber
     const user = await prisma.user.create({
       data: {
-        email,
+        email: userData.email,
         passwordHash,
-        name,
-        phoneNumber,
+        name: userData.name,
+        // Встановлюємо phoneNumber тільки якщо він визначений і не порожній
+        phoneNumber: userData.phoneNumber || null, // Важливо: використовуємо null замість undefined
         verificationToken,
       },
     });
 
-    // Send verification email
-    await sendVerificationEmail(email, verificationToken);
+    logger.info(`User registered: ${user.id}`);
+    return user;
+  } catch (error) {
+    logger.error('Registration failed', error);
+    throw error;
+  }
+},
+  // async register(data: RegisterData) {
+  //   const { email, password, name, phoneNumber } = data;
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user.id, role: user.role },
-      config.jwtSecret,
-      { expiresIn: config.jwtExpiresIn, algorithm: 'HS256' } as jwt.SignOptions
-    );
+  //   // Check if user exists
+  //   const existingUser = await prisma.user.findUnique({
+  //     where: { email },
+  //   });
 
-    return {
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        isVerified: user.isVerified,
-      },
-    };
-  },
+  //   if (existingUser) {
+  //     throw new Error('User with this email already exists');
+  //   }
+
+  //   // Hash password
+  //   const salt = await bcrypt.genSalt(10);
+  //   const passwordHash = await bcrypt.hash(password, salt);
+
+  //   // Generate verification token
+  //   const verificationToken = crypto.randomBytes(32).toString('hex');
+
+  //   // Create user
+  //   const user = await prisma.user.create({
+  //     data: {
+  //       email,
+  //       passwordHash,
+  //       name,
+  //       phoneNumber,
+  //       verificationToken,
+  //     },
+  //   });
+
+  //   // Send verification email
+  //   await sendVerificationEmail(email, verificationToken);
+
+  //   // Generate JWT token
+  //   const token = jwt.sign(
+  //     { userId: user.id, role: user.role },
+  //     config.jwtSecret,
+  //     { expiresIn: config.jwtExpiresIn, algorithm: 'HS256' } as jwt.SignOptions
+  //   );
+
+  //   return {
+  //     token,
+  //     user: {
+  //       id: user.id,
+  //       email: user.email,
+  //       name: user.name,
+  //       role: user.role,
+  //       isVerified: user.isVerified,
+  //     },
+  //   };
+  // },
 
   async login(data: LoginData) {
     const { email, password } = data;
