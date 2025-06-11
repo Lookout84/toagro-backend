@@ -10,6 +10,32 @@ const SCHEDULED_TASKS_EXCHANGE = 'scheduled_tasks';
 const DELAY_EXCHANGE = 'delay_exchange';
 const TASK_CHECK_INTERVAL = 60000; // 1 хвилина
 
+// Додайте enum статусів завдань
+export enum TaskStatus {
+  PENDING = 'PENDING',
+  PROCESSING = 'PROCESSING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  CANCELLED = 'CANCELLED',
+  PAUSED = 'PAUSED',
+}
+
+// Додайте інтерфейс для ScheduledTask (можна розширити за потреби)
+export interface ScheduledTask {
+  id: string;
+  type: TaskType;
+  data: any;
+  scheduledFor: Date;
+  status: TaskStatus;
+  maxAttempts: number;
+  attempts: number;
+  lastAttemptAt?: Date | null;
+  completedAt?: Date | null;
+  createdById?: number | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 /**
  * Типи планових завдань
  */
@@ -779,6 +805,24 @@ class ScheduledTaskService {
       throw error;
     }
   }
+
+  async pauseScheduledTask(taskId: string): Promise<boolean> {
+    const updated = await prisma.scheduledTask.updateMany({
+      where: { id: taskId, status: { in: ['PENDING', 'PROCESSING'] } },
+      data: { status: 'PAUSED' },
+    });
+    return updated.count > 0;
+  }
+
+  async resumeScheduledTask(taskId: string): Promise<boolean> {
+    const updated = await prisma.scheduledTask.updateMany({
+      where: { id: taskId, status: 'PAUSED' },
+      data: { status: 'PENDING' },
+    });
+    return updated.count > 0;
+  }
+
+
 }
 
 export const scheduledTaskService = new ScheduledTaskService();

@@ -31,6 +31,7 @@ import chatRoutes from './routes/chat';
 import transactionsRoutes from './routes/transactions';
 import healthRoutes from './routes/health';
 import adminRoutes from './routes/admin';
+import moderationRoutes from './routes/moderationRoutes';
 import categoryRoutes from './routes/categories';
 import notificationRoutes from './routes/notifications';
 import queueRoutes from './routes/queues';
@@ -408,6 +409,8 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/transactions', transactionsRoutes);
 app.use('/api/health', healthRoutes);
 app.use('/api/admin', adminRoutes);
+// Маршрути для модерації
+app.use('/api/moderation', moderationRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/queues', queueRoutes);

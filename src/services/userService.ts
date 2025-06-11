@@ -30,58 +30,58 @@ interface UpdateUserData {
 
 export const userService = {
   async register(userData: {
-  email: string;
-  password: string;
-  name: string;
-  phoneNumber?: string;
-}): Promise<User> {
-  try {
-    // Перевірка, чи існує користувач з таким email
-    const existingUserByEmail = await prisma.user.findUnique({
-      where: { email: userData.email },
-    });
-
-    if (existingUserByEmail) {
-      throw new Error('User with this email already exists');
-    }
-
-    // Перевірка унікальності номера телефону (якщо він вказаний)
-    if (userData.phoneNumber) {
-      const existingUserByPhone = await prisma.user.findUnique({
-        where: { phoneNumber: userData.phoneNumber },
+    email: string;
+    password: string;
+    name: string;
+    phoneNumber?: string;
+  }): Promise<User> {
+    try {
+      // Перевірка, чи існує користувач з таким email
+      const existingUserByEmail = await prisma.user.findUnique({
+        where: { email: userData.email },
       });
 
-      if (existingUserByPhone) {
-        throw new Error('User with this phone number already exists');
+      if (existingUserByEmail) {
+        throw new Error('User with this email already exists');
       }
+
+      // Перевірка унікальності номера телефону (якщо він вказаний)
+      if (userData.phoneNumber) {
+        const existingUserByPhone = await prisma.user.findUnique({
+          where: { phoneNumber: userData.phoneNumber },
+        });
+
+        if (existingUserByPhone) {
+          throw new Error('User with this phone number already exists');
+        }
+      }
+
+      // Хешування пароля
+      const salt = await bcrypt.genSalt(10);
+      const passwordHash = await bcrypt.hash(userData.password, salt);
+
+      // Генерація токена верифікації
+      const verificationToken = crypto.randomBytes(32).toString('hex');
+
+      // Створення користувача з правильною обробкою phoneNumber
+      const user = await prisma.user.create({
+        data: {
+          email: userData.email,
+          passwordHash,
+          name: userData.name,
+          // Встановлюємо phoneNumber тільки якщо він визначений і не порожній
+          phoneNumber: userData.phoneNumber || null, // Важливо: використовуємо null замість undefined
+          verificationToken,
+        },
+      });
+
+      logger.info(`User registered: ${user.id}`);
+      return user;
+    } catch (error) {
+      logger.error('Registration failed', error);
+      throw error;
     }
-
-    // Хешування пароля
-    const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash(userData.password, salt);
-
-    // Генерація токена верифікації
-    const verificationToken = crypto.randomBytes(32).toString('hex');
-
-    // Створення користувача з правильною обробкою phoneNumber
-    const user = await prisma.user.create({
-      data: {
-        email: userData.email,
-        passwordHash,
-        name: userData.name,
-        // Встановлюємо phoneNumber тільки якщо він визначений і не порожній
-        phoneNumber: userData.phoneNumber || null, // Важливо: використовуємо null замість undefined
-        verificationToken,
-      },
-    });
-
-    logger.info(`User registered: ${user.id}`);
-    return user;
-  } catch (error) {
-    logger.error('Registration failed', error);
-    throw error;
-  }
-},
+  },
   // async register(data: RegisterData) {
   //   const { email, password, name, phoneNumber } = data;
 
@@ -367,6 +367,24 @@ export const userService = {
         error,
         userId,
       });
+      throw error;
+    }
+  },
+
+  /**
+   * Призначення користувача модератором (тільки для адміністраторів)
+   */
+  async setUserAsModerator(userId: number): Promise<User> {
+    try {
+      const user = await prisma.user.update({
+        where: { id: userId },
+        data: { role: 'MODERATOR' },
+      });
+
+      logger.info(`User ${userId} has been set as moderator`);
+      return user;
+    } catch (error) {
+      logger.error('Failed to set user as moderator', { error, userId });
       throw error;
     }
   },

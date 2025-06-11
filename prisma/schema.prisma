@@ -176,12 +176,14 @@ model User {
   UserActivity        UserActivity[]
   favorites           Favorite[]
   companyProfile      CompanyProfile?
+  reports             Report[]
 }
 
 enum UserRole {
   USER
   COMPANY
   ADMIN
+  MODERATOR
 }
 
 model CompanyProfile {
@@ -222,30 +224,31 @@ enum CompanySize {
 }
 
 model CompanyDocument {
-  id              Int      @id @default(autoincrement())
-  companyId       Int
-  company         CompanyProfile @relation(fields: [companyId], references: [id])
-  name            String
-  type            String   // certificate, license, registration, etc.
-  fileUrl         String
-  isVerified      Boolean  @default(false)
-  verifiedAt      DateTime?
-  verifiedById    Int?
-  uploadedAt      DateTime @default(now())
-  expiresAt       DateTime?
+  id           Int            @id @default(autoincrement())
+  companyId    Int
+  company      CompanyProfile @relation(fields: [companyId], references: [id])
+  name         String
+  type         String // certificate, license, registration, etc.
+  fileUrl      String
+  isVerified   Boolean        @default(false)
+  status       String // pending, approved, rejected
+  verifiedAt   DateTime?
+  verifiedById Int?
+  uploadedAt   DateTime       @default(now())
+  expiresAt    DateTime?
 }
 
 model CompanyAddress {
-  id              Int      @id @default(autoincrement())
-  companyId       Int      @unique
-  company         CompanyProfile @relation(fields: [companyId], references: [id])
-  country         String
-  region          String?
-  city            String
-  street          String?
-  postalCode      String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id         Int            @id @default(autoincrement())
+  companyId  Int            @unique
+  company    CompanyProfile @relation(fields: [companyId], references: [id])
+  country    String
+  region     String?
+  city       String
+  street     String?
+  postalCode String?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
 }
 
 model UserActivity {
@@ -298,6 +301,7 @@ model Listing {
   categoryRel   Category?      @relation(fields: [categoryId], references: [id])
   motorizedSpec MotorizedSpec?
   favorites     Favorite[]
+  reports       Report[]
 }
 
 // --- НОВІ МОДЕЛІ ДЛЯ РЕГІОНІВ ТА ГРОМАД ---
@@ -487,6 +491,7 @@ enum ScheduledTaskStatus {
   FAILED
   CANCELLED
   ACTIVE
+  PAUSED
 }
 
 enum BulkNotificationStatus {
@@ -604,4 +609,25 @@ model MotorizedSpec {
   // Тимчасові мітки
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Report {
+  id           Int       @id @default(autoincrement())
+  userId       Int
+  user         User      @relation(fields: [userId], references: [id])
+  listingId    Int?
+  listing      Listing?  @relation(fields: [listingId], references: [id])
+  reason       String
+  description  String?
+  resolvedById Int?
+  resolvedAt   DateTime?
+  status       String    @default("PENDING") // або enum, якщо потрібно
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+enum ReportStatus {
+  PENDING
+  RESOLVED
+  REJECTED
 }

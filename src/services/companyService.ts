@@ -270,6 +270,7 @@ class CompanyService {
       const document = await prisma.companyDocument.create({
         data: {
           ...documentData,
+          status: 'PENDING', // or another default status as required by your schema
           company: {
             connect: { id: companyId },
           },

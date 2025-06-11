@@ -2,6 +2,10 @@ import { Request, Response, NextFunction } from 'express';
 import { Prisma, UserRole, PaymentStatus } from '@prisma/client';
 import { prisma } from '../config/db';
 import { logger } from '../utils/logger';
+import { userService } from '../services/userService';
+import { adminCompanyService } from '../services/adminCompanyService';
+import { adminReportService } from '../services/adminReportService';
+import { systemHealthService } from '../services/systemHealthService';
 
 export const adminController = {
   /**
@@ -337,6 +341,41 @@ export const adminController = {
     }
   },
 
+  /**
+   * Призначення користувача модератором (тільки для адміністраторів)
+   */
+  async setUserAsModerator(req: Request, res: Response) {
+    try {
+      const userId = parseInt(req.params.id);
+
+      if (!userId || isNaN(userId)) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Invalid user ID',
+        });
+      }
+
+      const user = await userService.setUserAsModerator(userId);
+
+      res.status(200).json({
+        status: 'success',
+        message: 'User has been set as moderator',
+        data: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+        },
+      });
+    } catch (error) {
+      logger.error('Failed to set user as moderator', error);
+      res.status(500).json({
+        status: 'error',
+        message: 'Failed to set user as moderator',
+      });
+    }
+  },
+
   async getAllListings(req: Request, res: Response, next: NextFunction) {
     try {
       const { page = '1', limit = '10', status, search } = req.query;
@@ -404,6 +443,75 @@ export const adminController = {
       next(error);
     }
   },
+  /**
+   * Отримання списку всіх компаній (тільки для адміністратора)
+   */
+  async getAllCompanies(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { page = '1', limit = '10', search, isVerified } = req.query;
+      const pageNum = parseInt(page as string);
+      const limitNum = parseInt(limit as string);
+
+      const result = await adminCompanyService.getAllCompanies({
+        page: pageNum,
+        limit: limitNum,
+        search: search as string,
+        isVerified:
+          typeof isVerified !== 'undefined' ? isVerified === 'true' : undefined,
+      });
+
+      res.status(200).json({
+        status: 'success',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getCompanyById(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = parseInt(req.params.id);
+      const company = await adminCompanyService.getCompanyById(id);
+      if (!company) {
+        return res
+          .status(404)
+          .json({ status: 'error', message: 'Компанію не знайдено' });
+      }
+      res.status(200).json({ status: 'success', data: company });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getCompanyProfileByUser(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const userId = parseInt(req.params.userId);
+      const company = await adminCompanyService.getCompanyProfileByUser(userId);
+      if (!company) {
+        return res
+          .status(404)
+          .json({ status: 'error', message: 'Компанію не знайдено' });
+      }
+      res.status(200).json({ status: 'success', data: company });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async verifyCompany(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = parseInt(req.params.id);
+      const company = await adminCompanyService.verifyCompany(id);
+      res.status(200).json({ status: 'success', data: company });
+    } catch (error) {
+      next(error);
+    }
+  },
 
   async getAllCategories(req: Request, res: Response, next: NextFunction) {
     try {
@@ -448,6 +556,43 @@ export const adminController = {
         data: {
           categories,
         },
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async verifyDocument(req: Request, res: Response, next: NextFunction) {
+    try {
+      const documentId = parseInt(req.params.documentId);
+      if (!documentId || isNaN(documentId)) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Некоректний ID документа',
+        });
+      }
+      const document = await adminCompanyService.verifyDocument(documentId);
+      res.status(200).json({ status: 'success', data: document });
+    } catch (error) {
+      next(error);
+    }
+  },
+  async getAllReports(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { page = '1', limit = '20', status, search } = req.query;
+      const pageNum = parseInt(page as string);
+      const limitNum = parseInt(limit as string);
+
+      const result = await adminReportService.getAllReports({
+        page: pageNum,
+        limit: limitNum,
+        status: status as string,
+        search: search as string,
+      });
+
+      res.status(200).json({
+        status: 'success',
+        data: result,
       });
     } catch (error) {
       next(error);
@@ -501,6 +646,61 @@ export const adminController = {
           },
         },
       });
+    } catch (error) {
+      next(error);
+    }
+  },
+  async getReportById(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id: number = parseInt(req.params.id);
+      const report = await adminReportService.getReportById(id);
+      if (!report) {
+        return res
+          .status(404)
+          .json({ status: 'error', message: 'Скаргу не знайдено' });
+      }
+      res.status(200).json({ status: 'success', data: report });
+    } catch (error) {
+      next(error);
+    }
+  },
+  async resolveReport(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = parseInt(req.params.id);
+      const resolverId = req.userId; // або req.user.id, залежно від вашого middleware
+      if (typeof resolverId !== 'number') {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Invalid resolver ID',
+        });
+      }
+      const report = await adminReportService.resolveReport(id, resolverId);
+      res.status(200).json({ status: 'success', data: report });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getSystemHealth(
+    req: Request, 
+    res: Response, 
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      interface SystemHealth {
+        status: string;
+        uptime: number;
+        db?: {
+          status: string;
+          latency: number;
+        };
+        dependencies?: Record<string, any>;
+        [key: string]: any;
+      }
+
+      // You may want to import systemHealthService type if available
+      const health: SystemHealth = await systemHealthService.getSystemHealth();
+      res.status(200).json({ status: 'success', data: health });
     } catch (error) {
       next(error);
     }
