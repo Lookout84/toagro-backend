@@ -1597,6 +1597,125 @@
             "description": "Forbidden"
           }
         }
+      },
+      "post": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "example": "any"
+                },
+                "slug": {
+                  "example": "any"
+                },
+                "description": {
+                  "example": "any"
+                },
+                "image": {
+                  "example": "any"
+                },
+                "parentId": {
+                  "example": "any"
+                },
+                "active": {
+                  "example": "any"
+                },
+                "favorite": {
+                  "example": "any"
+                },
+                "isMotorized": {
+                  "example": "any"
+                }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/categories/{id}": {
+      "put": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "example": "any"
+                },
+                "slug": {
+                  "example": "any"
+                },
+                "description": {
+                  "example": "any"
+                },
+                "image": {
+                  "example": "any"
+                },
+                "parentId": {
+                  "example": "any"
+                },
+                "active": {
+                  "example": "any"
+                },
+                "favorite": {
+                  "example": "any"
+                },
+                "isMotorized": {
+                  "example": "any"
+                }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      },
+      "delete": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
       }
     },
     "/users/{id}/set-moderator": {
