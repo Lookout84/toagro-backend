@@ -284,8 +284,8 @@ model Listing {
   priceType     PriceType      @default(NETTO) // нове поле
   vatIncluded   Boolean        @default(false) // чи включено ПДВ
   currency      Currency       @default(UAH)
-  locationId    Int?
   location      Location?      @relation(fields: [locationId], references: [id])
+  locationId    Int?
   category      String
   categoryId    Int?
   userId        Int
@@ -346,46 +346,27 @@ model Country {
 
 // Спрощена модель Location без зв'язків з Region та Community
 model Location {
-  id          Int       @id @default(autoincrement())
+  id          Int        @id @default(autoincrement())
   countryId   Int?
-  country     Country?  @relation(fields: [countryId], references: [id])
+  country     String?
+  region      String?
+  district    String?
   settlement  String
   latitude    Float? // Координати для карти
   longitude   Float?
   // Нові поля для даних OpenStreetMap
-  osmId       Int? // osm_id: 12353510
-  osmType     String? // osm_type: "relation"
-  placeId     Int? // place_id: 405611405
-  displayName String? // display_name
-  addressType String? // addresstype: "municipality"
-  boundingBox String[] // boundingbox: ["48.3078815", "48.5082727", "27.6556703", "28.1038170"]
-  osmJsonData Json? // Для збереження всіх даних геокодера
-  region      String? // Тепер просто рядок
-  district    String? // Район або громада як рядок
+  osmId       Int?      // osm_id: 12353510
+  osmType     String?   // osm_type: "relation"
+  placeId     Int?      // place_id: 405611405
+  displayName String?   // display_name
+  addressType String?   // addresstype: "municipality"
+  boundingBox String[]  // boundingbox: ["48.3078815", "48.5082727", "27.6556703", "28.1038170"]
+  osmJsonData Json?     // Для збереження всіх даних геокодера
   listings    Listing[]
+  Country     Country?  @relation(fields: [countryId], references: [id])
 }
 
-// model Location {
-//   id            Int        @id @default(autoincrement())
-//   countryId     Int
-//   country       Country    @relation(fields: [countryId], references: [id])
-//   regionId      Int
-//   region        Region     @relation(fields: [regionId], references: [id])
-//   communityId   Int?
-//   community     Community? @relation(fields: [communityId], references: [id])
-//   settlement    String
-//   latitude      Float? // Координати для карти
-//   longitude     Float?
-//   // Нові поля для даних OpenStreetMap
-//   osmId         Int?      // osm_id: 12353510
-//   osmType       String?   // osm_type: "relation"
-//   placeId       Int?      // place_id: 405611405
-//   displayName   String?   // display_name
-//   addressType   String?   // addresstype: "municipality"
-//   boundingBox   String[]  // boundingbox: ["48.3078815", "48.5082727", "27.6556703", "28.1038170"]
-//   osmJsonData   Json?     // Для збереження всіх даних геокодера
-//   listings      Listing[]
-// }
+
 
 // model Location {
 //   id          Int        @id @default(autoincrement())
