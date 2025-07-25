@@ -15,6 +15,51 @@ const numberTransformer = (val: any) => {
   return undefined;
 };
 
+// Схема для геолокації користувача
+export const userGeolocationSchema = z.object({
+  latitude: z.preprocess(
+    numberTransformer,
+    z.number().min(-90).max(90, 'Широта має бути між -90 та 90')
+  ),
+  longitude: z.preprocess(
+    numberTransformer,
+    z.number().min(-180).max(180, 'Довгота має бути між -180 та 180')
+  ),
+  accuracy: z.number().optional(),
+  timestamp: z.string().optional(),
+});
+
+// Схема для вибору місця на карті (OSM формат)
+export const mapLocationSchema = z.object({
+  lat: z.preprocess(
+    numberTransformer,
+    z.number().min(-90).max(90, 'Широта має бути між -90 та 90')
+  ),
+  lon: z.preprocess(
+    numberTransformer,
+    z.number().min(-180).max(180, 'Довгота має бути між -180 та 180')
+  ),
+  name: z.string().optional(),
+  display_name: z.string().optional(),
+  place_id: z.number().optional(),
+  osm_id: z.number().optional(),
+  osm_type: z.string().optional(),
+  address: z.object({
+    country: z.string().optional(),
+    state: z.string().optional(),
+    region: z.string().optional(),
+    county: z.string().optional(),
+    city: z.string().optional(),
+    town: z.string().optional(),
+    village: z.string().optional(),
+    hamlet: z.string().optional(),
+    suburb: z.string().optional(),
+    neighbourhood: z.string().optional(),
+    postcode: z.string().optional(),
+  }).optional(),
+  boundingbox: z.array(z.string()).optional(),
+});
+
 // Схема для вкладеної локації (Country → Region → Community → settlement + координати)
 // Оновлена схема для спрощеної локації
 export const locationInputSchema = z.object({
@@ -80,18 +125,54 @@ export const locationInputSchema = z.object({
 //   ),
 // });
 
+// Enum для типу пального з трансформацією
+export const fuelTypeEnum = z.enum([
+  'DIESEL', 
+  'GASOLINE', 
+  'ELECTRIC', 
+  'HYBRID', 
+  'GAS',
+  // Додаємо lowercase варіанти для сумісності
+  'diesel',
+  'gasoline', 
+  'electric',
+  'hybrid',
+  'gas'
+]).transform(val => val.toUpperCase() as 'DIESEL' | 'GASOLINE' | 'ELECTRIC' | 'HYBRID' | 'GAS');
+
+// Enum для трансмісії з трансформацією
+export const transmissionEnum = z.enum([
+  'MANUAL',
+  'AUTOMATIC', 
+  'HYDROSTATIC',
+  'CVT',
+  // Додаємо інші варіанти для сумісності
+  'manual',
+  'automatic',
+  'hydrostatic',
+  'cvt',
+  'powershift',
+  'POWERSHIFT'
+]).transform(val => {
+  const upperVal = val.toUpperCase();
+  // Перетворюємо powershift на найближчий варіант
+  if (upperVal === 'POWERSHIFT') return 'AUTOMATIC';
+  return upperVal as 'MANUAL' | 'AUTOMATIC' | 'HYDROSTATIC' | 'CVT';
+});
+
 // Схема для motorizedSpec (основні поля, можна розширити)
 export const motorizedSpecSchema = z.object({
   brand: z.string().min(1).optional(),
   model: z.string().min(1).optional(),
   year: z.preprocess(numberTransformer, z.number().int().min(1900).max(new Date().getFullYear()).optional()),
   serialNumber: z.string().optional(),
-  enginePower: z.number().optional(),
-  enginePowerKw: z.number().optional(),
+  enginePower: z.preprocess(numberTransformer, z.number().optional()),
+  enginePowerKw: z.preprocess(numberTransformer, z.number().optional()),
   engineModel: z.string().optional(),
-  fuelType: z.enum(['DIESEL', 'GASOLINE', 'ELECTRIC', 'HYBRID', 'GAS']).optional(),
-  fuelCapacity: z.number().optional(),
-  transmission: z.enum(['MANUAL', 'AUTOMATIC', 'HYDROSTATIC', 'CVT']).optional(),
+  fuelType: fuelTypeEnum.optional(),
+  fuelCapacity: z.preprocess(numberTransformer, z.number().optional()),
+  transmission: transmissionEnum.optional(),
+  engineHours: z.preprocess(numberTransformer, z.number().min(0).optional()),
   numberOfGears: z.number().optional(),
   length: z.number().optional(),
   width: z.number().optional(),
@@ -115,7 +196,6 @@ export const motorizedSpecSchema = z.object({
   headerWidth: z.number().optional(),
   threshingWidth: z.number().optional(),
   cleaningArea: z.number().optional(),
-  engineHours: z.number().optional(),
   mileage: z.number().optional(),
   lastServiceDate: z.string().optional(),
   nextServiceDate: z.string().optional(),
@@ -202,6 +282,12 @@ const listingBaseSchema = {
 
   // Додаємо motorizedSpec як вкладений об'єкт (опціонально)
   motorizedSpec: motorizedSpecSchema.optional(),
+
+  // Геолокація користувача (опціонально)
+  userGeolocation: userGeolocationSchema.optional(),
+
+  // Дані з карти OpenStreetMap (опціонально)
+  mapLocation: mapLocationSchema.optional(),
 };
 
 // Схема для створення оголошення

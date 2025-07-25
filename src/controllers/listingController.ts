@@ -20,12 +20,21 @@ export const listingController = {
    */
   async createListing(req: Request, res: Response): Promise<void> {
     try {
-      logger.info('Спроба створення оголошення');
-      logger.debug('Отримані:', JSON.stringify(req.body));
+      logger.info('=== ПОЧАТОК СТВОРЕННЯ ОГОЛОШЕННЯ ===');
+      logger.info('HTTP Method:', req.method);
+      logger.info('URL:', req.originalUrl);
+      logger.info('Headers:', JSON.stringify(req.headers, null, 2));
+      logger.info('Raw Body:', JSON.stringify(req.body, null, 2));
+      logger.info('Files:', req.files ? (req.files as Express.Multer.File[]).map(f => ({ 
+        fieldname: f.fieldname, 
+        originalname: f.originalname, 
+        filename: f.filename,
+        size: f.size
+      })) : 'No files');
 
       // 1. Перевіряємо наявність тіла запиту
       if (!req.body || Object.keys(req.body).length === 0) {
-        logger.warn('Отримано порожнє тіло запиту');
+        logger.warn('❌ Отримано порожнє тіло запиту');
         res.status(400).json({
           status: 'error',
           message: 'Відсутні дані для створення оголошення',
@@ -56,12 +65,20 @@ export const listingController = {
       // --- Обробка геолокації та локації товару ---
       let { location, mapLocation, userGeolocation, ...rest } = req.body;
       
+      logger.info('📍 ОТРИМАНІ ДАНІ ГЕОЛОКАЦІЇ:');
+      logger.info('location:', JSON.stringify(location, null, 2));
+      logger.info('mapLocation:', JSON.stringify(mapLocation, null, 2));
+      logger.info('userGeolocation:', JSON.stringify(userGeolocation, null, 2));
+      logger.info('rest (інші поля):', Object.keys(rest));
+      
       // Парсимо location, якщо він приходить як рядок
       if (typeof location === 'string') {
         try {
+          logger.info('🔄 Парсинг location з рядка...');
           location = JSON.parse(location);
+          logger.info('✅ Location успішно парсено:', JSON.stringify(location, null, 2));
         } catch (e) {
-          logger.warn('Некоректний формат location');
+          logger.warn('❌ Некоректний формат location:', e);
           location = undefined;
         }
       }
@@ -73,17 +90,24 @@ export const listingController = {
       let finalLongitude: number | undefined;
       let useUserGeolocation = false;
 
+      logger.info('🎯 ВИЗНАЧЕННЯ КООРДИНАТ:');
+
       // Якщо є дані з карти OpenStreetMap - використовуємо їх
       if (mapLocation) {
+        logger.info('🗺️ Обробка даних з карти...');
         try {
           const mapLocationData =
             typeof mapLocation === 'string'
               ? JSON.parse(mapLocation)
               : mapLocation;
 
+          logger.info('mapLocationData після парсингу:', JSON.stringify(mapLocationData, null, 2));
+
           if (mapLocationData.lat && mapLocationData.lon) {
             finalLatitude = Number(mapLocationData.lat);
             finalLongitude = Number(mapLocationData.lon);
+            
+            logger.info(`✅ Використано координати з карти: (${finalLatitude}, ${finalLongitude})`);
             
             // Створюємо або доповнюємо локацію даними з OSM
             location = location || {};
@@ -129,19 +153,26 @@ export const listingController = {
                 '';
             }
 
-            logger.info('Використано координати з карти для товару');
+            logger.info('📍 Локація після обробки карти:', JSON.stringify(location, null, 2));
+          } else {
+            logger.warn('❌ mapLocation не містить lat/lon');
           }
         } catch (e) {
-          logger.warn('Помилка обробки даних з карти:', e);
+          logger.warn('❌ Помилка обробки даних з карти:', e);
         }
       }
 
       // Якщо координати ще не визначені і є геолокація користувача - використовуємо її
       if (!finalLatitude && !finalLongitude && userGeolocation && 
           userGeolocation.latitude && userGeolocation.longitude) {
+        logger.info('👤 Обробка геолокації користувача...');
+        logger.info('userGeolocation:', JSON.stringify(userGeolocation, null, 2));
+        
         finalLatitude = parseFloat(userGeolocation.latitude);
         finalLongitude = parseFloat(userGeolocation.longitude);
         useUserGeolocation = true;
+        
+        logger.info(`✅ Використано геолокацію користувача: (${finalLatitude}, ${finalLongitude})`);
         
         // Якщо location не було створено раніше, створюємо його з геолокації користувача
         if (!location) {
@@ -150,13 +181,17 @@ export const listingController = {
         location.latitude = finalLatitude;
         location.longitude = finalLongitude;
         
-        logger.info('Використано геолокацію користувача для товару');
+        logger.info('📍 Локація після обробки геолокації користувача:', JSON.stringify(location, null, 2));
       }
+
+      logger.info(`🎯 ФІНАЛЬНІ КООРДИНАТИ: (${finalLatitude}, ${finalLongitude}), джерело: ${useUserGeolocation ? 'геолокація користувача' : 'карта'}`);
 
       // Виконуємо reverse geocoding для отримання адресних даних
       if (finalLatitude && finalLongitude) {
+        logger.info('🔄 Виконання reverse geocoding...');
         try {
           const geocodedInfo = await reverseGeocode(finalLatitude, finalLongitude);
+          logger.info('✅ Результат reverse geocoding:', JSON.stringify(geocodedInfo, null, 2));
           
           // Доповнюємо location геокодованими даними, якщо вони ще не встановлені
           location = location || {};
@@ -174,16 +209,19 @@ export const listingController = {
             location.displayName = geocodedInfo.displayName;
           }
           
-          logger.info(`Виконано reverse geocoding для координат (${finalLatitude}, ${finalLongitude}):`, {
+          logger.info(`📍 ФІНАЛЬНА ЛОКАЦІЯ:`, {
             country: location.country,
             region: location.region,
             district: location.district,
             settlement: location.settlement,
+            coordinates: `(${finalLatitude}, ${finalLongitude})`,
             source: useUserGeolocation ? 'user_geolocation' : 'map_selection'
           });
         } catch (error) {
-          logger.warn('Помилка reverse geocoding:', error);
+          logger.warn('❌ Помилка reverse geocoding:', error);
         }
+      } else {
+        logger.warn('❗ Координати не визначено, reverse geocoding пропущено');
       }
 
       // Перетворюємо числові поля location на числа
@@ -234,7 +272,8 @@ export const listingController = {
       delete listingData.mapLocation;
       delete listingData.userGeolocation;
 
-      console.log('Дані для створення оголошення:', listingData);
+      logger.info('🔧 ДАНІ ДЛЯ СТВОРЕННЯ ОГОЛОШЕННЯ:');
+      logger.info('listingData:', JSON.stringify(listingData, null, 2));
 
       // 4. Валідація даних
       const validationResult = createListingSchema.safeParse(listingData);
@@ -265,7 +304,14 @@ export const listingController = {
           ...(motorizedSpec ? { motorizedSpec } : {}),
         });
 
-        logger.info(`Оголошення з ID ${listing.id} успішно створено`);
+        logger.info(`✅ Оголошення з ID ${listing.id} успішно створено`);
+        logger.info('Створене оголошення:', JSON.stringify({
+          id: listing.id,
+          title: listing.title,
+          locationId: listing.locationId,
+          createdAt: listing.createdAt
+        }, null, 2));
+        
         res.status(201).json({
           status: 'success',
           message: 'Оголошення успішно створено',
@@ -275,6 +321,8 @@ export const listingController = {
             createdAt: listing.createdAt,
           },
         });
+        
+        logger.info('=== СТВОРЕННЯ ОГОЛОШЕННЯ ЗАВЕРШЕНО ===');
       } catch (error: any) {
         logger.error(`Помилка створення оголошення: ${error.message}`);
         res.status(500).json({

@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест геолокації ToAgro</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1, h2 {
+            color: #2c5530;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea, button {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #2c5530;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #1e3a21;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .coords {
+            background: #e8f5e8;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .response {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 15px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #ddd;
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            border-bottom: 2px solid transparent;
+        }
+        .tab.active {
+            border-bottom-color: #2c5530;
+            background-color: #f8f9fa;
+        }
+        .tab-content {
+            display: none;
+            padding: 20px 0;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚜 ToAgro - Тест геолокації</h1>
+        <p>Тестування API для створення оголошень з геолокацією</p>
+        
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('test')">Тестовий endpoint</button>
+            <button class="tab" onclick="showTab('listing')">Створити оголошення</button>
+        </div>
+
+        <!-- Тестовий endpoint -->
+        <div id="test" class="tab-content active">
+            <h2>Тестовий endpoint</h2>
+            <form id="testForm">
+                <div class="form-group">
+                    <label>Назва тесту:</label>
+                    <input type="text" id="testTitle" value="Тест геолокації">
+                </div>
+                
+                <div class="form-group">
+                    <button type="button" onclick="getLocation()">🌍 Отримати геолокацію</button>
+                    <div id="locationStatus" class="coords" style="display: none;"></div>
+                </div>
+
+                <div class="form-group">
+                    <label>Дані з карти (JSON):</label>
+                    <textarea id="mapLocation" rows="6" placeholder='{"lat": "50.4501", "lon": "30.5234", "name": "Київ"}'></textarea>
+                </div>
+
+                <button type="submit">🧪 Відправити тест</button>
+            </form>
+            <div id="testResponse" class="response" style="display: none;"></div>
+        </div>
+
+        <!-- Створення оголошення -->
+        <div id="listing" class="tab-content">
+            <h2>Створити оголошення</h2>
+            <form id="listingForm">
+                <div class="form-group">
+                    <label>Назва оголошення:</label>
+                    <input type="text" id="listingTitle" value="Трактор John Deere" required>
+                </div>
+                
+                <div class="form-group">
+                    <label>Опис:</label>
+                    <textarea id="description" rows="3" required>Відмінний трактор в гарному стані</textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>Ціна (UAH):</label>
+                    <input type="number" id="price" value="50000" required>
+                </div>
+
+                <div class="form-group">
+                    <label>ID категорії:</label>
+                    <input type="number" id="categoryId" value="1" required>
+                </div>
+
+                <div class="form-group">
+                    <button type="button" onclick="getLocationForListing()">🌍 Отримати геолокацію</button>
+                    <div id="listingLocationStatus" class="coords" style="display: none;"></div>
+                </div>
+
+                <div class="form-group">
+                    <label>Дані з карти (JSON, опціонально):</label>
+                    <textarea id="listingMapLocation" rows="4" placeholder='{"lat": "50.4501", "lon": "30.5234", "name": "Київ"}'></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>Зображення:</label>
+                    <input type="file" id="images" multiple accept="image/*">
+                </div>
+
+                <button type="submit">🚜 Створити оголошення</button>
+            </form>
+            <div id="listingResponse" class="response" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:5000/api';
+        let userGeolocation = null;
+
+        // Переключення табів
+        function showTab(tabName) {
+            // Приховати всі таби
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Показати вибраний таб
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        // Отримання геолокації
+        function getLocation() {
+            const status = document.getElementById('locationStatus');
+            status.style.display = 'block';
+            status.innerHTML = '🔄 Отримання геолокації...';
+            status.className = 'coords';
+
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        userGeolocation = {
+                            latitude: position.coords.latitude.toString(),
+                            longitude: position.coords.longitude.toString(),
+                            accuracy: position.coords.accuracy
+                        };
+                        
+                        status.innerHTML = `✅ Геолокація отримана:<br>Широта: ${userGeolocation.latitude}<br>Довгота: ${userGeolocation.longitude}<br>Точність: ${userGeolocation.accuracy}м`;
+                        status.className = 'coords status success';
+                    },
+                    function(error) {
+                        status.innerHTML = `❌ Помилка: ${error.message}`;
+                        status.className = 'coords status error';
+                    }
+                );
+            } else {
+                status.innerHTML = '❌ Геолокація не підтримується браузером';
+                status.className = 'coords status error';
+            }
+        }
+
+        function getLocationForListing() {
+            const status = document.getElementById('listingLocationStatus');
+            status.style.display = 'block';
+            status.innerHTML = '🔄 Отримання геолокації...';
+            status.className = 'coords';
+
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        userGeolocation = {
+                            latitude: position.coords.latitude.toString(),
+                            longitude: position.coords.longitude.toString(),
+                            accuracy: position.coords.accuracy
+                        };
+                        
+                        status.innerHTML = `✅ Геолокація отримана:<br>Широта: ${userGeolocation.latitude}<br>Довгота: ${userGeolocation.longitude}<br>Точність: ${userGeolocation.accuracy}м`;
+                        status.className = 'coords status success';
+                    },
+                    function(error) {
+                        status.innerHTML = `❌ Помилка: ${error.message}`;
+                        status.className = 'coords status error';
+                    }
+                );
+            } else {
+                status.innerHTML = '❌ Геолокація не підтримується браузером';
+                status.className = 'coords status error';
+            }
+        }
+
+        // Тестовий запит
+        document.getElementById('testForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const responseDiv = document.getElementById('testResponse');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '🔄 Відправка запиту...';
+
+            const formData = new FormData();
+            formData.append('title', document.getElementById('testTitle').value);
+            
+            if (userGeolocation) {
+                formData.append('userGeolocation', JSON.stringify(userGeolocation));
+            }
+            
+            const mapLocation = document.getElementById('mapLocation').value.trim();
+            if (mapLocation) {
+                try {
+                    JSON.parse(mapLocation); // Перевірка валідності JSON
+                    formData.append('mapLocation', mapLocation);
+                } catch (e) {
+                    responseDiv.textContent = '❌ Некоректний JSON в полі "Дані з карти"';
+                    return;
+                }
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/test/geolocation`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                responseDiv.textContent = `Status: ${response.status}\n\n${JSON.stringify(result, null, 2)}`;
+            } catch (error) {
+                responseDiv.textContent = `❌ Помилка: ${error.message}`;
+            }
+        });
+
+        // Створення оголошення
+        document.getElementById('listingForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const responseDiv = document.getElementById('listingResponse');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '🔄 Створення оголошення...';
+
+            const formData = new FormData();
+            formData.append('title', document.getElementById('listingTitle').value);
+            formData.append('description', document.getElementById('description').value);
+            formData.append('price', document.getElementById('price').value);
+            formData.append('currency', 'UAH');
+            formData.append('categoryId', document.getElementById('categoryId').value);
+            formData.append('category', 'agricultural_machinery');
+            formData.append('condition', 'used');
+            
+            if (userGeolocation) {
+                formData.append('userGeolocation', JSON.stringify(userGeolocation));
+            }
+            
+            const mapLocation = document.getElementById('listingMapLocation').value.trim();
+            if (mapLocation) {
+                try {
+                    JSON.parse(mapLocation); // Перевірка валідності JSON
+                    formData.append('mapLocation', mapLocation);
+                } catch (e) {
+                    responseDiv.textContent = '❌ Некоректний JSON в полі "Дані з карти"';
+                    return;
+                }
+            }
+
+            // Додавання файлів
+            const files = document.getElementById('images').files;
+            for (let i = 0; i < files.length; i++) {
+                formData.append('images', files[i]);
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/listings`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                responseDiv.textContent = `Status: ${response.status}\n\n${JSON.stringify(result, null, 2)}`;
+            } catch (error) {
+                responseDiv.textContent = `❌ Помилка: ${error.message}`;
+            }
+        });
+
+        // Автоматично заповнити приклад даних карти
+        document.getElementById('mapLocation').value = JSON.stringify({
+            "lat": "50.4501",
+            "lon": "30.5234",
+            "name": "Київ",
+            "display_name": "Київ, Україна",
+            "osm_id": 421866,
+            "address": {
+                "city": "Київ",
+                "state": "Київська область",
+                "country": "Україна"
+            }
+        }, null, 2);
+
+        document.getElementById('listingMapLocation').value = JSON.stringify({
+            "lat": "49.2331",
+            "lon": "28.4682",
+            "name": "Вінниця",
+            "display_name": "Вінниця, Вінницька область, Україна",
+            "osm_id": 1234567,
+            "address": {
+                "city": "Вінниця",
+                "state": "Вінницька область",
+                "country": "Україна"
+            }
+        }, null, 2);
+    </script>
+</body>
+</html>

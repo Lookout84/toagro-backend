@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import { handleMulterError } from './middleware/errorHandler';
+import { requestLogger } from './middleware/requestLogger';
 import path from 'path';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -41,6 +42,7 @@ import brandRoutes from './routes/brand';
 import motorizedSpecRouter from './routes/motorizedSpec';
 import countriesRouter from './routes/countries';
 import companyRoutes from './routes/companyRoutes';
+import testRoutes from './routes/testRoutes';
 // Функція для перевірки доступності порту
 const isPortAvailable = (port: number): Promise<boolean> => {
   return new Promise((resolve) => {
@@ -381,6 +383,11 @@ app.use(compression());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// Request logging middleware
+if (process.env.NODE_ENV === 'development') {
+  app.use(requestLogger);
+}
+
 // Static files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
@@ -420,6 +427,7 @@ app.use('/api/brands', brandRoutes);
 app.use('/api/motorized-spec', motorizedSpecRouter);
 app.use('/api/countries', countriesRouter);
 app.use('/api', companyRoutes);
+app.use('/api/test', testRoutes);
 // Error handling
 app.use(handleMulterError);
 app.use(errorHandler);
